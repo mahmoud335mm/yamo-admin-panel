@@ -1,0 +1,9 @@
+
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='payment_submitted')  THEN ALTER TYPE recharge_request_status ADD VALUE 'payment_submitted'  AFTER 'pending_payment'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='manual_review')      THEN ALTER TYPE recharge_request_status ADD VALUE 'manual_review'      AFTER 'verifying'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='approved')           THEN ALTER TYPE recharge_request_status ADD VALUE 'approved'           AFTER 'manual_review'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='crediting')          THEN ALTER TYPE recharge_request_status ADD VALUE 'crediting'          AFTER 'approved'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='refund_pending')     THEN ALTER TYPE recharge_request_status ADD VALUE 'refund_pending'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='partially_refunded') THEN ALTER TYPE recharge_request_status ADD VALUE 'partially_refunded'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='chargeback')         THEN ALTER TYPE recharge_request_status ADD VALUE 'chargeback'; END IF; END $$;
+DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumtypid='recharge_request_status'::regtype AND enumlabel='reversed')           THEN ALTER TYPE recharge_request_status ADD VALUE 'reversed'; END IF; END $$;

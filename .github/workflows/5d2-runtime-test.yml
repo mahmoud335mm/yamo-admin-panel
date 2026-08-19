@@ -1,0 +1,291 @@
+# Phase 5D-2R Runtime Test — CI Workflow
+#
+# TEST PROJECT ONLY — DO NOT ENABLE ON PRODUCTION BRANCHES.
+# Run manually from the isolated-test branch only.
+#
+# The workflow refuses to run against the production project ref
+# (omgrldatyncodeabecia) — the guard fails closed even if secrets are
+# misconfigured. It also pins the expected isolated Test project ref
+# (kmmegunjvssclsjlarun) and URL, and never echoes secret values.
+
+name: 5D-2 Runtime Verification (Isolated Test Project)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  runtime:
+    if: github.ref == 'refs/heads/isolated-test'
+    runs-on: ubuntu-latest
+    environment: isolated-test
+
+    env:
+      TEST_ENVIRONMENT: "true"
+      APP_ENV: "test"
+      ALLOW_TEST_FIXTURES: "true"
+
+      SUPABASE_TEST_URL: ${{ secrets.SUPABASE_TEST_URL }}
+      SUPABASE_TEST_ANON_KEY: ${{ secrets.SUPABASE_TEST_ANON_KEY }}
+      SUPABASE_TEST_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_TEST_SERVICE_ROLE_KEY }}
+
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      EXPECTED_TEST_PROJECT_REF: ${{ vars.EXPECTED_TEST_PROJECT_REF }}
+      TEST_RUN_ID: "run-${{ github.run_id }}-${{ github.run_attempt }}"
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Fail-closed project validation (no secrets printed)
+        run: |
+          set -eu
+          PROD_REF="omgrldatyncodeabecia"
+          REQUIRED_REF="kmmegunjvssclsjlarun"
+          REQUIRED_URL="https://kmmegunjvssclsjlarun.supabase.co"
+
+          if [ -z "${EXPECTED_TEST_PROJECT_REF:-}" ]; then
+            echo "EXPECTED_TEST_PROJECT_REF is not set" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_TEST_URL:-}" ]; then
+            echo "SUPABASE_TEST_URL is not set" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+            echo "SUPABASE_ACCESS_TOKEN is not set" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_DB_PASSWORD:-}" ]; then
+            echo "SUPABASE_DB_PASSWORD is not set" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_TEST_SERVICE_ROLE_KEY:-}" ]; then
+            echo "SUPABASE_TEST_SERVICE_ROLE_KEY is not set" >&2
+            exit 1
+          fi
+          if [ -z "${SUPABASE_TEST_ANON_KEY:-}" ]; then
+            echo "SUPABASE_TEST_ANON_KEY is not set" >&2
+            exit 1
+          fi
+
+          if [ "$EXPECTED_TEST_PROJECT_REF" = "$PROD_REF" ]; then
+            echo "PRODUCTION_PROJECT_BLOCKED: EXPECTED_TEST_PROJECT_REF matches production" >&2
+            exit 1
+          fi
+          if [ "$EXPECTED_TEST_PROJECT_REF" != "$REQUIRED_REF" ]; then
+            echo "TEST_PROJECT_REF_MISMATCH: EXPECTED_TEST_PROJECT_REF does not match the pinned isolated Test project ref" >&2
+            exit 1
+          fi
+          case "$SUPABASE_TEST_URL" in
+            *"$PROD_REF"*)
+              echo "PRODUCTION_PROJECT_BLOCKED: SUPABASE_TEST_URL points to production" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$SUPABASE_TEST_URL" != "$REQUIRED_URL" ]; then
+            echo "TEST_PROJECT_URL_MISMATCH: SUPABASE_TEST_URL does not match the pinned isolated Test project URL" >&2
+            exit 1
+          fi
+
+          echo "Isolated Test project validated (values not printed)."
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Stage test-only migrations into runner (not committed)
+        run: |
+          set -eu
+          mkdir -p supabase/migrations
+
+          MARKER_SRC="supabase/test-migrations/5d2r_test_environment_marker.sql"
+          BASELINE_SRC="supabase/test-migrations/5d2r_baseline_snapshot.sql"
+          NOFIN_SRC="supabase/test-migrations/5d2r_no_financial_side_effects.sql"
+          BASELINE_V2_SRC="supabase/test-migrations/5d2r_baseline_snapshot_v2.sql"
+          AUTH_BYPASS_SRC="supabase/test-migrations/5d2r_auth_fixture_bypass.sql"
+          BASELINE_V3_SRC="supabase/test-migrations/5d2r_baseline_snapshot_v3.sql"
+          BASELINE_V4_SRC="supabase/test-migrations/5d2r_baseline_snapshot_v4.sql"
+
+          MARKER_DST="supabase/migrations/99999999999991_5d2r_test_environment_marker.sql"
+          BASELINE_DST="supabase/migrations/99999999999992_5d2r_baseline_snapshot.sql"
+          NOFIN_DST="supabase/migrations/99999999999993_5d2r_no_financial_side_effects.sql"
+          BASELINE_V2_DST="supabase/migrations/99999999999994_5d2r_baseline_snapshot_v2.sql"
+          BASELINE_V2_DUP_DST="supabase/migrations/99999999999995_5d2r_baseline_snapshot_v2.sql"
+          BASELINE_V3_DST="supabase/migrations/99999999999996_5d2r_baseline_snapshot_v3.sql"
+          AUTH_BYPASS_DST="supabase/migrations/99999999999997_5d2r_auth_fixture_bypass.sql"
+          BASELINE_V4_DST="supabase/migrations/99999999999998_5d2r_baseline_snapshot_v4.sql"
+
+          cp "$MARKER_SRC" "$MARKER_DST"
+
+          # Idempotent marker row insert, using EXPECTED_TEST_PROJECT_REF.
+          # The row is only inserted when no marker row already exists.
+          # Value is embedded via a psql-safe single-quoted literal; the value
+          # is a non-secret project ref (validated in the previous step).
+          cat >> "$MARKER_DST" <<SQL
+
+          INSERT INTO public.test_environment_marker (environment_name, project_ref, test_fixtures_allowed)
+          SELECT 'test', '${EXPECTED_TEST_PROJECT_REF}', true
+          WHERE NOT EXISTS (SELECT 1 FROM public.test_environment_marker);
+          SQL
+
+          cp "$BASELINE_SRC" "$BASELINE_DST"
+          cp "$NOFIN_SRC" "$NOFIN_DST"
+          cp "$BASELINE_V2_SRC" "$BASELINE_V2_DST"
+          cp "$BASELINE_V2_SRC" "$BASELINE_V2_DUP_DST"
+          cp "$BASELINE_V3_SRC" "$BASELINE_V3_DST"
+          cp "$AUTH_BYPASS_SRC" "$AUTH_BYPASS_DST"
+          cp "$BASELINE_V4_SRC" "$BASELINE_V4_DST"
+
+          echo "Staged 8 test-only migration files for this run."
+
+      - name: Construct IPv4 Session Pooler connection URL (masked)
+        run: |
+          set -eu
+          PROD_REF="omgrldatyncodeabecia"
+          REQUIRED_REF="kmmegunjvssclsjlarun"
+          REQUIRED_HOST="aws-0-eu-west-1.pooler.supabase.com"
+          REQUIRED_PORT="5432"
+          REQUIRED_DB="postgres"
+          REQUIRED_USER="postgres.kmmegunjvssclsjlarun"
+
+          if [ "${GITHUB_REF:-}" != "refs/heads/isolated-test" ]; then
+            echo "BRANCH_GUARD_FAILED: workflow must run on isolated-test" >&2
+            exit 1
+          fi
+          if [ "${EXPECTED_TEST_PROJECT_REF:-}" != "$REQUIRED_REF" ]; then
+            echo "TEST_PROJECT_REF_MISMATCH" >&2
+            exit 1
+          fi
+          if [ "$EXPECTED_TEST_PROJECT_REF" = "$PROD_REF" ]; then
+            echo "PRODUCTION_PROJECT_BLOCKED" >&2
+            exit 1
+          fi
+          if ! grep -q "^project_id = \"${REQUIRED_REF}\"$" supabase/config.toml; then
+            echo "CONFIG_TOML_PROJECT_ID_MISMATCH: supabase/config.toml must pin ${REQUIRED_REF}" >&2
+            exit 1
+          fi
+          case "$REQUIRED_HOST" in
+            *"$PROD_REF"*)
+              echo "PRODUCTION_HOST_BLOCKED" >&2
+              exit 1
+              ;;
+          esac
+          if [ "$REQUIRED_HOST" != "aws-0-eu-west-1.pooler.supabase.com" ]; then
+            echo "POOLER_HOST_MISMATCH" >&2
+            exit 1
+          fi
+
+          DB_PASSWORD_ENCODED="$(node -e 'process.stdout.write(encodeURIComponent(process.env.SUPABASE_DB_PASSWORD))')"
+          echo "::add-mask::$DB_PASSWORD_ENCODED"
+          DB_URL="postgresql://${REQUIRED_USER}:${DB_PASSWORD_ENCODED}@${REQUIRED_HOST}:${REQUIRED_PORT}/${REQUIRED_DB}"
+          echo "::add-mask::$DB_URL"
+          {
+            echo "SUPABASE_DB_URL<<__EOF__"
+            echo "$DB_URL"
+            echo "__EOF__"
+          } >> "$GITHUB_ENV"
+
+          echo "Pooler connection URL constructed and masked (value not printed)."
+
+      - name: Apply database migrations to isolated Test project (IPv4 Session Pooler)
+        run: supabase db push --db-url "$SUPABASE_DB_URL" --yes
+
+      - name: Verify auth fixture bypass migration applied (fail-closed)
+        run: |
+          set -eu
+          PSQL_OUT="$(mktemp)"
+          # 1) migration recorded
+          psql "$SUPABASE_DB_URL" -Atc \
+            "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '99999999999997' AND name = '5d2r_auth_fixture_bypass';" \
+            > "$PSQL_OUT"
+          if [ "$(cat "$PSQL_OUT")" != "1" ]; then
+            echo "AUTH_BYPASS_MIGRATION_NOT_RECORDED" >&2
+            exit 1
+          fi
+          # 2) function body contains all required tokens
+          BODY="$(psql "$SUPABASE_DB_URL" -Atc "SELECT pg_get_functiondef('public.handle_new_admin_user'::regproc);")"
+          for token in \
+            "test_environment_marker" \
+            "kmmegunjvssclsjlarun" \
+            "test_run_id" \
+            "fixture_scope" \
+            "harness_role" \
+            "public.admin_invites%ROWTYPE"; do
+            case "$BODY" in
+              *"$token"*) ;;
+              *)
+                echo "AUTH_BYPASS_FUNCTION_MISSING_TOKEN: $token" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "Auth fixture bypass verification passed."
+
+      - name: Verify baseline v4 removed financial_resolution_status (fail-closed)
+        run: |
+          set -eu
+          # 1) migration recorded
+          COUNT="$(psql "$SUPABASE_DB_URL" -Atc \
+            "SELECT count(*) FROM supabase_migrations.schema_migrations WHERE version = '99999999999998' AND name = '5d2r_baseline_snapshot_v4';")"
+          if [ "$COUNT" != "1" ]; then
+            echo "BASELINE_V4_MIGRATION_NOT_RECORDED" >&2
+            exit 1
+          fi
+          # 2) no current 5D-2 function body may contain financial_resolution_status
+          for fn in \
+            "public.capture_5d2_baseline(text, text)" \
+            "public.assert_5d2_no_financial_side_effects(text)"; do
+            BODY="$(psql "$SUPABASE_DB_URL" -Atc "SELECT pg_get_functiondef('${fn}'::regprocedure);")"
+            case "$BODY" in
+              *"financial_resolution_status"*)
+                echo "BASELINE_V4_FUNCTION_STILL_REFERENCES_MISSING_COLUMN: ${fn}" >&2
+                exit 1
+                ;;
+            esac
+          done
+          echo "Baseline v4 verification passed."
+
+      - name: Guard verification (no DB access)
+        run: bunx vitest run tests/scaffold
+
+      - name: Runtime configuration diagnostic (safe)
+        run: bun run tests/scripts/runtime-config-diagnostic.ts
+
+      - name: Runtime suite (fails closed if not Test Project)
+        run: |
+          set -o pipefail
+          bunx vitest run \
+            --config vitest.runtime.config.ts \
+            --no-file-parallelism \
+            --maxWorkers=1 \
+            --reporter=default \
+            --reporter=json \
+            --outputFile.json=runtime-report.json 2>&1 | tee runtime-console.log
+
+      - name: Generate runtime report (from actual CI result)
+        if: always()
+        run: bun run tests/scripts/generate-runtime-report.ts
+
+      - name: Cleanup (always)
+        if: always()
+        run: bun run tests/setup/cleanup-test-users.server.ts
+
+      - name: Upload safe artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: 5d2-runtime-report
+          path: |
+            runtime-report.json
+            runtime-console.log
+            docs/testing/5d2-runtime-test-report.md
+          if-no-files-found: warn

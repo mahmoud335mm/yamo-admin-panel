@@ -1,0 +1,13 @@
+project_id = "kmmegunjvssclsjlarun"
+
+[functions.finalize-account-deletions]
+verify_jwt = false
+
+[functions.expire-moderation]
+verify_jwt = false
+
+[functions.dispatch-push-notifications]
+verify_jwt = false
+
+[functions.health]
+verify_jwt = false
