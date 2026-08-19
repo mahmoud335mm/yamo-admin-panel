@@ -85,16 +85,16 @@ export function AppSidebar() {
   };
 
   return (
-    <Sidebar collapsible="icon" side="right">
-      <SidebarHeader className="border-b">
-        <div className="flex items-center gap-2 px-2 py-2">
-          <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-orange-500 to-purple-600 text-white">
+    <Sidebar collapsible="icon" side="right" className="yamo-sidebar">
+      <SidebarHeader className="border-b border-white/10">
+        <div className="flex items-center gap-3 px-2 py-3">
+          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-lg shadow-violet-950/30">
             <Sparkles className="h-4 w-4" />
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-tight">
-              <span className="text-sm font-bold">يامو شات</span>
-              <span className="text-[10px] text-muted-foreground">Admin Console</span>
+              <span className="text-sm font-black">لوحة تحكم يامو</span>
+              <span className="text-[10px] tracking-[0.18em] text-muted-foreground">SMART CONSOLE</span>
             </div>
           )}
         </div>
@@ -112,7 +112,7 @@ export function AppSidebar() {
       <SidebarFooter className="border-t">
         {!collapsed && (
           <div className="px-2 py-2 text-[10px] text-muted-foreground">
-            © Yamo Chat · v1.0
+            Yamo Digital Console · 2026
           </div>
         )}
       </SidebarFooter>

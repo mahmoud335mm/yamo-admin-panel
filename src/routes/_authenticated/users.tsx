@@ -7,13 +7,15 @@ export const Route = createFileRoute("/_authenticated/users")({
       description="حسابات يامو الحقيقية وحالتها ومستواها"
       source="admin_profiles"
       columns={[
+        { key: "avatar_url", label: "الصورة", kind: "image" },
         { key: "legacy_id", label: "ID" },
         { key: "display_name", label: "الاسم" },
         { key: "gender", label: "الجنس" },
         { key: "level", label: "LV" },
         { key: "vip_level", label: "VIP" },
-        { key: "account_status", label: "الحالة" },
-        { key: "created_at", label: "الإنشاء" },
+        { key: "coins", label: "الكوينز", kind: "number" },
+        { key: "pearls", label: "اللؤلؤ", kind: "number" },
+        { key: "account_status", label: "الحالة", kind: "status" },
       ]}
       actions={[
         {

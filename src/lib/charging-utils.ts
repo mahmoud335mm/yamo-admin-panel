@@ -38,7 +38,7 @@ export function fmtNum(n: number | string | null | undefined): string {
 
 export function fmtDate(d: string | null | undefined): string {
   if (!d) return "-";
-  return new Date(d).toLocaleString("ar-EG", { dateStyle: "short", timeStyle: "short" });
+  return new Date(d).toLocaleString("ar-EG-u-nu-latn", { dateStyle: "short", timeStyle: "short" });
 }
 
 export function newIdempotencyKey(prefix: string): string {

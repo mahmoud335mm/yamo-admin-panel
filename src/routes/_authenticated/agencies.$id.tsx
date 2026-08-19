@@ -133,7 +133,7 @@ function AgencyDetail() {
                     <TableCell>H{h.level_id}</TableCell>
                     <TableCell className="font-mono">{h.monthly_hours}</TableCell>
                     <TableCell className="font-mono">{h.monthly_coins.toLocaleString()}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{new Date(h.joined_at).toLocaleDateString("ar")}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{new Date(h.joined_at).toLocaleDateString("ar-EG-u-nu-latn")}</TableCell>
                   </TableRow>
                 ))}</TableBody>
               </Table>
@@ -146,7 +146,7 @@ function AgencyDetail() {
             {(violations.data?.length ?? 0) === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">لا مخالفات.</div> :
               <Table><TableHeader><TableRow><TableHead>النوع</TableHead><TableHead>الشدة</TableHead><TableHead>السبب</TableHead><TableHead>التاريخ</TableHead></TableRow></TableHeader>
                 <TableBody>{violations.data!.map((v) => (
-                  <TableRow key={v.id}><TableCell>{v.type}</TableCell><TableCell><Badge variant="destructive">{v.severity}</Badge></TableCell><TableCell>{v.reason}</TableCell><TableCell className="text-xs">{new Date(v.created_at).toLocaleString("ar")}</TableCell></TableRow>
+                  <TableRow key={v.id}><TableCell>{v.type}</TableCell><TableCell><Badge variant="destructive">{v.severity}</Badge></TableCell><TableCell>{v.reason}</TableCell><TableCell className="text-xs">{new Date(v.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell></TableRow>
                 ))}</TableBody></Table>}
           </CardContent></Card>
         </TabsContent>
@@ -156,7 +156,7 @@ function AgencyDetail() {
             {(history.data?.length ?? 0) === 0 ? <div className="py-8 text-center text-sm text-muted-foreground">لا تغييرات.</div> :
               <Table><TableHeader><TableRow><TableHead>من</TableHead><TableHead>إلى</TableHead><TableHead>السبب</TableHead><TableHead>التاريخ</TableHead></TableRow></TableHeader>
                 <TableBody>{history.data!.map((h) => (
-                  <TableRow key={h.id}><TableCell>Lv {h.old_level ?? "—"}</TableCell><TableCell><Badge>Lv {h.new_level}</Badge></TableCell><TableCell>{h.reason ?? "—"}</TableCell><TableCell className="text-xs">{new Date(h.created_at).toLocaleString("ar")}</TableCell></TableRow>
+                  <TableRow key={h.id}><TableCell>Lv {h.old_level ?? "—"}</TableCell><TableCell><Badge>Lv {h.new_level}</Badge></TableCell><TableCell>{h.reason ?? "—"}</TableCell><TableCell className="text-xs">{new Date(h.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell></TableRow>
                 ))}</TableBody></Table>}
           </CardContent></Card>
         </TabsContent>

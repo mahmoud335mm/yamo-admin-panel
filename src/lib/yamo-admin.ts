@@ -1,4 +1,5 @@
 import { supabase } from "@/integrations/supabase/client";
+import { formatDateTime, formatNumber } from "@/lib/format";
 
 export type YamoAdminMe = {
   user_id: string;
@@ -45,9 +46,9 @@ export function readableValue(value: unknown): string {
   if (value == null) return "—";
   if (typeof value === "boolean") return value ? "نعم" : "لا";
   if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "number") return formatNumber(value);
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value)) {
-    const date = new Date(value);
-    if (!Number.isNaN(date.getTime())) return date.toLocaleString("ar-EG");
+    return formatDateTime(value);
   }
   return String(value);
 }

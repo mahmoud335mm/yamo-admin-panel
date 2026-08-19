@@ -8,11 +8,14 @@ export const Route = createFileRoute("/_authenticated/rooms")({
         description="الغرف الحقيقية، المالك، الحالة والترتيب المميز"
         source="admin_rooms"
         columns={[
+          { key: "cover_url", label: "الغلاف", kind: "image" },
           { key: "room_id", label: "ID" },
           { key: "title", label: "الغرفة" },
           { key: "owner_legacy_id", label: "المالك" },
-          { key: "is_featured", label: "مميزة" },
-          { key: "updated_at", label: "آخر تحديث" },
+          { key: "category", label: "القسم" },
+          { key: "occupancy", label: "المتواجدون", kind: "number" },
+          { key: "featured", label: "مميزة", kind: "status" },
+          { key: "created_at", label: "الإنشاء" },
         ]}
         actions={[
           {

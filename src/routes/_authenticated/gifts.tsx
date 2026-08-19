@@ -37,11 +37,12 @@ export const Route = createFileRoute("/_authenticated/gifts")({
         description="كتالوج هدايا يامو وأسعاره وحالة الظهور"
         source="admin_gifts"
         columns={[
+          { key: "image_url", label: "الصورة", kind: "image" },
           { key: "id", label: "الكود" },
           { key: "name_ar", label: "الاسم" },
-          { key: "price_coins", label: "السعر" },
+          { key: "price_coins", label: "السعر", kind: "number" },
           { key: "category", label: "القسم" },
-          { key: "active", label: "نشطة" },
+          { key: "active", label: "نشطة", kind: "status" },
         ]}
       />
       <YamoDataModule

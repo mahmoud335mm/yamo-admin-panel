@@ -50,6 +50,8 @@ import {
   Gavel,
   Smartphone,
   Activity,
+  Network,
+  UserCheck,
 } from "lucide-react";
 
 export type NavChild = {
@@ -258,6 +260,22 @@ export const navItems: NavItem[] = [
         icon: BarChart3,
         permission: "economy.read",
       },
+    ],
+  },
+
+  {
+    to: "/charging-agencies",
+    labelAr: "منظومة وكلاء الشحن",
+    labelEn: "Charging Network",
+    icon: Network,
+    permission: "charging_agencies.read",
+    children: [
+      { to: "/charging-agencies", labelAr: "وكالات الشحن", labelEn: "Charging Agencies", icon: Building2, permission: "charging_agencies.read" },
+      { to: "/charging-agents", labelAr: "وكلاء الشحن", labelEn: "Charging Agents", icon: UserCheck, permission: "charging_agents.read" },
+      { to: "/charging-pricing", labelAr: "تسعير وهوامش الشحن", labelEn: "Pricing & Margins", icon: DollarSign, permission: "charging_pricing.read" },
+      { to: "/charging-coin-transfers", labelAr: "تحويلات الكوينز", labelEn: "Coin Transfers", icon: Coins, permission: "charging_transfers.read" },
+      { to: "/charging-pearl-transfers", labelAr: "تحويلات اللؤلؤ", labelEn: "Pearl Transfers", icon: Sparkle, permission: "charging_transfers.read" },
+      { to: "/bd", labelAr: "مديرو تطوير الأعمال", labelEn: "Business Development", icon: HandCoins, permission: "bd.read" },
     ],
   },
 

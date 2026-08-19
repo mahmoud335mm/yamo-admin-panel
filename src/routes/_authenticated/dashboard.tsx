@@ -32,6 +32,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { yamoRpc } from "@/lib/yamo-admin";
+import { formatInteger, formatNumber } from "@/lib/format";
 
 type TrendPoint = {
   day: string;
@@ -63,8 +64,6 @@ type DashboardData = {
   profit_period?: number;
   trend?: TrendPoint[];
 };
-const number = new Intl.NumberFormat("ar-EG", { maximumFractionDigits: 0 });
-const money = new Intl.NumberFormat("ar-EG", { maximumFractionDigits: 2 });
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
@@ -179,10 +178,10 @@ function Dashboard() {
                   tickLine={false}
                   axisLine={false}
                   fontSize={11}
-                  tickFormatter={(v) => number.format(Number(v))}
+                  tickFormatter={(v) => formatInteger(v)}
                 />
                 <Tooltip
-                  formatter={(v) => `${money.format(Number(v))} ${currency}`}
+                  formatter={(v) => `${formatNumber(v)} ${currency}`}
                   contentStyle={{ borderRadius: 12 }}
                 />
                 <Legend />
@@ -222,7 +221,7 @@ function Dashboard() {
               <div>
                 <div className="text-xs text-muted-foreground">{label}</div>
                 <div className="mt-1 text-2xl font-black">
-                  {q.isLoading ? "…" : number.format(Number(value ?? 0))}
+                  {q.isLoading ? "…" : formatInteger(value)}
                 </div>
               </div>
               <div className="rounded-xl bg-muted p-2.5">
@@ -281,7 +280,7 @@ function MoneyCard({
           <div className="text-sm text-muted-foreground">{title}</div>
           <div className={`mt-2 text-2xl font-black ${color}`}>
             {signed && numeric > 0 ? "+" : ""}
-            {money.format(numeric)} <span className="text-xs">{currency}</span>
+            {formatNumber(numeric)} <span className="text-xs">{currency}</span>
           </div>
         </div>
         <div className="rounded-2xl bg-muted p-3">
@@ -299,7 +298,7 @@ function QueueCard({ label, value }: { label: string; value?: number }) {
         <div
           className={`text-2xl font-black ${count > 0 ? "text-orange-500" : "text-emerald-500"}`}
         >
-          {number.format(count)}
+          {formatInteger(count)}
         </div>
         <div className="mt-1 text-xs text-muted-foreground">{label}</div>
       </CardContent>

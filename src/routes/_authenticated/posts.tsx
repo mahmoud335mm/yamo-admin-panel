@@ -7,9 +7,14 @@ export const Route = createFileRoute("/_authenticated/posts")({
       description="مراجعة وإزالة المحتوى مع تسجيل السبب"
       source="admin_posts"
       columns={[
+        { key: "media_url", label: "الوسائط", kind: "image" },
         { key: "id", label: "المرجع" },
-        { key: "author_legacy_id", label: "الناشر" },
+        { key: "legacy_id", label: "ID الناشر" },
+        { key: "display_name", label: "الناشر" },
         { key: "body", label: "المحتوى" },
+        { key: "like_count", label: "الإعجابات", kind: "number" },
+        { key: "comment_count", label: "التعليقات", kind: "number" },
+        { key: "report_count", label: "البلاغات", kind: "number" },
         { key: "created_at", label: "النشر" },
       ]}
       actions={[

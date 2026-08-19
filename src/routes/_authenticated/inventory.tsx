@@ -56,12 +56,13 @@ export const Route = createFileRoute("/_authenticated/inventory")({
         description="إطارات الدخول والفقاعات وباقي مقتنيات متجر يامو"
         source="admin_store_assets"
         columns={[
+          { key: "preview_url", label: "المعاينة", kind: "image" },
           { key: "asset_kind", label: "النوع" },
           { key: "asset_key", label: "الكود" },
           { key: "name_ar", label: "الاسم" },
-          { key: "price_coins", label: "السعر" },
-          { key: "duration_days", label: "المدة" },
-          { key: "enabled", label: "متاح" },
+          { key: "price_coins", label: "السعر", kind: "number" },
+          { key: "duration_days", label: "المدة", kind: "number" },
+          { key: "enabled", label: "متاح", kind: "status" },
         ]}
       />
       <YamoDataModule

@@ -117,7 +117,7 @@ function BDDetail() {
               <Table><TableHeader><TableRow><TableHead>الوقت</TableHead><TableHead>المسؤول</TableHead><TableHead>العملية</TableHead></TableRow></TableHeader>
                 <TableBody>{audit.data!.map((a) => (
                   <TableRow key={a.id}>
-                    <TableCell className="text-xs">{new Date(a.created_at).toLocaleString("ar")}</TableCell>
+                    <TableCell className="text-xs">{new Date(a.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
                     <TableCell className="text-xs">{a.actor_email ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{a.action}</TableCell>
                   </TableRow>

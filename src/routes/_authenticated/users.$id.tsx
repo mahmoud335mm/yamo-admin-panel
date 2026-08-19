@@ -182,8 +182,8 @@ function UserDetail() {
             <Info label="تاريخ الميلاد" value={p.birth_date ?? "—"} />
             <Info label="الوكالة" value={p.agency_id ?? "غير مرتبط"} />
             <Info label="BD" value={p.bd_id ?? "غير مرتبط"} />
-            <Info label="آخر ظهور" value={p.last_seen_at ? new Date(p.last_seen_at).toLocaleString("ar") : "—"} />
-            <Info label="تاريخ الإنشاء" value={new Date(p.created_at).toLocaleString("ar")} />
+            <Info label="آخر ظهور" value={p.last_seen_at ? new Date(p.last_seen_at).toLocaleString("ar-EG-u-nu-latn") : "—"} />
+            <Info label="تاريخ الإنشاء" value={new Date(p.created_at).toLocaleString("ar-EG-u-nu-latn")} />
           </CardContent></Card>
         </TabsContent>
 
@@ -211,7 +211,7 @@ function UserDetail() {
                 <TableBody>
                   {ledger.data?.map((r) => (
                     <TableRow key={r.id}>
-                      <TableCell className="text-xs">{new Date(r.created_at).toLocaleString("ar")}</TableCell>
+                      <TableCell className="text-xs">{new Date(r.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
                       <TableCell>{r.account}</TableCell>
                       <TableCell><Badge variant={r.direction === "credit" ? "default" : "destructive"}>{r.direction}</Badge></TableCell>
                       <TableCell>{r.reason}</TableCell>
@@ -234,7 +234,7 @@ function UserDetail() {
                 <TableBody>
                   {history.data?.map((h) => (
                     <TableRow key={h.id}>
-                      <TableCell className="text-xs">{new Date(h.created_at).toLocaleString("ar")}</TableCell>
+                      <TableCell className="text-xs">{new Date(h.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
                       <TableCell><Badge variant="secondary">{h.field}</Badge></TableCell>
                       <TableCell className="font-mono text-xs">{JSON.stringify(h.old_value)}</TableCell>
                       <TableCell className="font-mono text-xs">{JSON.stringify(h.new_value)}</TableCell>
@@ -279,7 +279,7 @@ function UserDetail() {
                         <TableCell><Badge variant="destructive">{pen.type}</Badge></TableCell>
                         <TableCell>{pen.reason}</TableCell>
                         <TableCell>{pen.active ? <Badge>نعم</Badge> : <Badge variant="outline">لا</Badge>}</TableCell>
-                        <TableCell className="text-xs">{new Date(pen.created_at).toLocaleString("ar")}</TableCell>
+                        <TableCell className="text-xs">{new Date(pen.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>

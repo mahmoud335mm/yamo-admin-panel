@@ -57,6 +57,172 @@ where public.yamo_admin_has_permission('users.read');
 -- ---------------------------------------------------------------------------
 -- Finance reads
 -- ---------------------------------------------------------------------------
+-- Compatibility for older Yamo databases where the first manual-payment
+-- prototype created thinner request tables. CREATE TABLE IF NOT EXISTS does
+-- not add columns to an existing table, so add the production columns here
+-- before the admin views reference them. Existing rows are preserved.
+alter table public.yamo_recharge_requests
+  add column if not exists paid_amount numeric(14,2) not null default 0,
+  add column if not exists currency_code text not null default 'EGP',
+  add column if not exists sender_account text not null default '',
+  add column if not exists proof_path text,
+  add column if not exists expires_at timestamptz not null default (now() + interval '30 minutes'),
+  add column if not exists updated_at timestamptz not null default now();
+
+alter table public.yamo_withdraw_requests
+  add column if not exists fee_pearls bigint not null default 0,
+  add column if not exists payout_amount numeric(14,2) not null default 0,
+  add column if not exists currency_code text not null default 'EGP',
+  add column if not exists payout_details jsonb not null default '{}'::jsonb,
+  add column if not exists updated_at timestamptz not null default now();
+
+-- Some installations skipped the server-authoritative pearls-to-coins phase.
+-- Provision its catalog and immutable exchange history so both Android and the
+-- admin console use the same records.
+create table if not exists public.yamo_pearl_exchange_offers (
+  id text primary key,
+  pearl_amount bigint not null check (pearl_amount > 0),
+  coin_amount bigint not null check (coin_amount > 0),
+  enabled boolean not null default true,
+  sort_order integer not null default 0,
+  updated_at timestamptz not null default now()
+);
+
+insert into public.yamo_pearl_exchange_offers(id, pearl_amount, coin_amount, sort_order)
+values
+  ('exchange_15k',15000,10500,1),('exchange_50k',50000,35000,2),
+  ('exchange_100k',100000,70000,3),('exchange_250k',250000,175000,4),
+  ('exchange_500k',500000,350000,5),('exchange_1m',1000000,700000,6)
+on conflict (id) do nothing;
+
+create table if not exists public.yamo_pearl_exchanges (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  offer_id text not null references public.yamo_pearl_exchange_offers(id),
+  pearl_amount bigint not null,
+  coin_amount bigint not null,
+  idempotency_key uuid not null,
+  created_at timestamptz not null default now(),
+  unique(user_id,idempotency_key)
+);
+
+alter table public.yamo_pearl_exchange_offers enable row level security;
+alter table public.yamo_pearl_exchanges enable row level security;
+revoke all on public.yamo_pearl_exchange_offers, public.yamo_pearl_exchanges from anon, authenticated;
+grant select on public.yamo_pearl_exchange_offers, public.yamo_pearl_exchanges to authenticated;
+drop policy if exists yamo_pearl_exchange_offers_read on public.yamo_pearl_exchange_offers;
+create policy yamo_pearl_exchange_offers_read on public.yamo_pearl_exchange_offers
+  for select to authenticated using (enabled);
+drop policy if exists yamo_pearl_exchanges_read_own on public.yamo_pearl_exchanges;
+create policy yamo_pearl_exchanges_read_own on public.yamo_pearl_exchanges
+  for select to authenticated using (user_id=auth.uid());
+
+-- Agency phase compatibility. Older app databases can predate V108, while
+-- the production panel expects the real agency tables (never shadow copies).
+create table if not exists public.yamo_agency_config (
+  id text primary key default 'main',
+  default_commission_percent numeric(5,2) not null default 10.00,
+  host_invite_reward_pearls bigint not null default 0,
+  minimum_settlement_pearls bigint not null default 0,
+  enabled boolean not null default true,
+  updated_at timestamptz not null default now(),
+  constraint yamo_agency_config_singleton check (id='main')
+);
+insert into public.yamo_agency_config(id) values('main') on conflict(id) do nothing;
+
+create table if not exists public.yamo_agencies (
+  id uuid primary key default gen_random_uuid(),
+  name text not null unique,
+  owner_id uuid not null references auth.users(id),
+  parent_agency_id uuid references public.yamo_agencies(id),
+  country_code text not null default '',
+  whatsapp_number text not null default '',
+  invite_code text not null unique,
+  commission_percent numeric(5,2) not null default 10.00,
+  created_at timestamptz not null default now(),
+  disabled_at timestamptz
+);
+
+create table if not exists public.yamo_agency_hosts (
+  agency_id uuid not null references public.yamo_agencies(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  joined_at timestamptz not null default now(),
+  removed_at timestamptz,
+  primary key(agency_id,user_id)
+);
+create unique index if not exists yamo_agency_hosts_active_idx
+  on public.yamo_agency_hosts(user_id) where removed_at is null;
+
+create table if not exists public.yamo_agency_invitations (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.yamo_agencies(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create table if not exists public.yamo_agency_host_earnings (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.yamo_agencies(id) on delete cascade,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  source text not null,
+  pearls bigint not null check(pearls>0),
+  reference_id text,
+  earned_at timestamptz not null default now()
+);
+
+create table if not exists public.yamo_agency_settlements (
+  id uuid primary key default gen_random_uuid(),
+  agency_id uuid not null references public.yamo_agencies(id) on delete cascade,
+  period_start date not null,
+  period_end date not null,
+  host_pearls bigint not null default 0,
+  commission_pearls bigint not null default 0,
+  commission_percent numeric(5,2) not null,
+  status text not null default 'pending',
+  created_at timestamptz not null default now(),
+  settled_at timestamptz,
+  settled_by uuid references auth.users(id),
+  unique(agency_id,period_start,period_end)
+);
+
+alter table public.yamo_agency_config enable row level security;
+alter table public.yamo_agencies enable row level security;
+alter table public.yamo_agency_hosts enable row level security;
+alter table public.yamo_agency_invitations enable row level security;
+alter table public.yamo_agency_host_earnings enable row level security;
+alter table public.yamo_agency_settlements enable row level security;
+revoke all on public.yamo_agency_config,public.yamo_agencies,public.yamo_agency_hosts,
+  public.yamo_agency_invitations,public.yamo_agency_host_earnings,
+  public.yamo_agency_settlements from anon,authenticated;
+grant select on public.yamo_agency_config,public.yamo_agencies,public.yamo_agency_hosts,
+  public.yamo_agency_invitations,public.yamo_agency_host_earnings,
+  public.yamo_agency_settlements to authenticated;
+
+drop policy if exists yamo_agency_config_read on public.yamo_agency_config;
+create policy yamo_agency_config_read on public.yamo_agency_config
+  for select to authenticated using(true);
+drop policy if exists yamo_agencies_read on public.yamo_agencies;
+create policy yamo_agencies_read on public.yamo_agencies
+  for select to authenticated using(disabled_at is null);
+drop policy if exists yamo_agency_hosts_read on public.yamo_agency_hosts;
+create policy yamo_agency_hosts_read on public.yamo_agency_hosts for select to authenticated
+  using(user_id=auth.uid() or exists(select 1 from public.yamo_agencies a
+    where a.id=yamo_agency_hosts.agency_id and a.owner_id=auth.uid()));
+drop policy if exists yamo_agency_invitations_read on public.yamo_agency_invitations;
+create policy yamo_agency_invitations_read on public.yamo_agency_invitations for select to authenticated
+  using(user_id=auth.uid() or exists(select 1 from public.yamo_agencies a
+    where a.id=yamo_agency_invitations.agency_id and a.owner_id=auth.uid()));
+drop policy if exists yamo_agency_earnings_read on public.yamo_agency_host_earnings;
+create policy yamo_agency_earnings_read on public.yamo_agency_host_earnings for select to authenticated
+  using(user_id=auth.uid() or exists(select 1 from public.yamo_agencies a
+    where a.id=yamo_agency_host_earnings.agency_id and a.owner_id=auth.uid()));
+drop policy if exists yamo_agency_settlements_read on public.yamo_agency_settlements;
+create policy yamo_agency_settlements_read on public.yamo_agency_settlements for select to authenticated
+  using(exists(select 1 from public.yamo_agencies a
+    where a.id=yamo_agency_settlements.agency_id and a.owner_id=auth.uid()));
+
 create or replace view public.admin_wallets
 with (security_invoker = true) as
 select w.user_id, p.legacy_id, coalesce(p.display_name, p.legacy_id) as display_name,

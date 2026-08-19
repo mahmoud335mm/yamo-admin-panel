@@ -112,7 +112,7 @@ function HostDetail() {
               </Link>
             )}
             {host.cooldown_until && new Date(host.cooldown_until) > new Date() && (
-              <Badge variant="destructive">فترة تبريد حتى {new Date(host.cooldown_until).toLocaleDateString("ar")}</Badge>
+              <Badge variant="destructive">فترة تبريد حتى {new Date(host.cooldown_until).toLocaleDateString("ar-EG-u-nu-latn")}</Badge>
             )}
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
@@ -122,7 +122,7 @@ function HostDetail() {
             <Stat label="الدين" value={host.debt.toLocaleString()} highlight={host.debt > 0} />
             <Stat label="إجمالي الساعات" value={String(host.total_hours)} />
             <Stat label="إجمالي العملات" value={host.total_coins.toLocaleString()} />
-            <Stat label="الانضمام" value={new Date(host.joined_at).toLocaleDateString("ar")} />
+            <Stat label="الانضمام" value={new Date(host.joined_at).toLocaleDateString("ar-EG-u-nu-latn")} />
             <Stat label="المستوى" value={profile.data ? `Lv ${profile.data.level} / VIP ${profile.data.vip_level}` : "—"} />
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -191,8 +191,8 @@ function HostDetail() {
               <Table><TableHeader><TableRow><TableHead>البداية</TableHead><TableHead>النهاية</TableHead><TableHead>الدقائق</TableHead><TableHead>الغرفة</TableHead></TableRow></TableHeader>
                 <TableBody>{shifts.data!.map((s) => (
                   <TableRow key={s.id}>
-                    <TableCell className="text-xs">{new Date(s.started_at).toLocaleString("ar")}</TableCell>
-                    <TableCell className="text-xs">{s.ended_at ? new Date(s.ended_at).toLocaleString("ar") : <Badge>جارٍ</Badge>}</TableCell>
+                    <TableCell className="text-xs">{new Date(s.started_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
+                    <TableCell className="text-xs">{s.ended_at ? new Date(s.ended_at).toLocaleString("ar-EG-u-nu-latn") : <Badge>جارٍ</Badge>}</TableCell>
                     <TableCell className="font-mono">{s.duration_min ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{s.room_id?.slice(0, 8) ?? "—"}</TableCell>
                   </TableRow>
@@ -211,7 +211,7 @@ function HostDetail() {
                     <TableCell className="font-mono text-xs">{t.to_agency_id.slice(0, 8)}…</TableCell>
                     <TableCell><Badge>{t.status}</Badge></TableCell>
                     <TableCell className="max-w-xs truncate">{t.reason}</TableCell>
-                    <TableCell className="text-xs">{new Date(t.created_at).toLocaleDateString("ar")}</TableCell>
+                    <TableCell className="text-xs">{new Date(t.created_at).toLocaleDateString("ar-EG-u-nu-latn")}</TableCell>
                   </TableRow>
                 ))}</TableBody></Table>
             )}
@@ -224,7 +224,7 @@ function HostDetail() {
               <Table><TableHeader><TableRow><TableHead>الوقت</TableHead><TableHead>المسؤول</TableHead><TableHead>العملية</TableHead></TableRow></TableHeader>
                 <TableBody>{auditLogs.data!.map((a) => (
                   <TableRow key={a.id}>
-                    <TableCell className="text-xs">{new Date(a.created_at).toLocaleString("ar")}</TableCell>
+                    <TableCell className="text-xs">{new Date(a.created_at).toLocaleString("ar-EG-u-nu-latn")}</TableCell>
                     <TableCell className="text-xs">{a.actor_email ?? "—"}</TableCell>
                     <TableCell className="font-mono text-xs">{a.action}</TableCell>
                   </TableRow>

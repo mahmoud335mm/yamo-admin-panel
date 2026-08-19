@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Loader2, Save } from "lucide-react";
+import { ImageIcon, Loader2, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,9 +56,9 @@ export function YamoCommandCard({
   });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{title}</CardTitle>
+    <Card className="overflow-hidden border-violet-500/15 bg-card/90 shadow-sm backdrop-blur-xl">
+      <CardHeader className="border-b bg-gradient-to-l from-violet-500/10 via-transparent to-orange-500/5">
+        <CardTitle className="flex items-center gap-2 text-base"><Sparkles className="h-4 w-4 text-violet-500" />{title}</CardTitle>
         <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
@@ -97,11 +97,17 @@ export function YamoCommandCard({
                     setValues((old) => ({ ...old, [field.key]: event.target.value }))
                   }
                 />
+                {/(image|avatar|banner|cover|icon)/i.test(field.key) && /^https?:\/\//.test(String(values[field.key] ?? "")) && (
+                  <div className="flex items-center gap-2 rounded-xl border bg-muted/30 p-2">
+                    <img src={String(values[field.key])} alt={field.label} className="h-14 w-14 rounded-xl border bg-muted object-cover" />
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground"><ImageIcon className="h-3.5 w-3.5" />معاينة الملف قبل الحفظ</span>
+                  </div>
+                )}
               </div>
             ),
           )}
           <div className="flex items-end">
-            <Button className="w-full" disabled={command.isPending} type="submit">
+            <Button className="w-full rounded-xl bg-gradient-to-l from-violet-600 to-fuchsia-600 shadow-lg shadow-violet-950/20" disabled={command.isPending} type="submit">
               {command.isPending ? (
                 <Loader2 className="ml-2 h-4 w-4 animate-spin" />
               ) : (

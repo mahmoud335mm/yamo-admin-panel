@@ -48,7 +48,7 @@ function AnalyticsPage() {
               <CardTitle className="text-sm text-muted-foreground">{x.l}</CardTitle>
             </CardHeader>
             <CardContent className="text-2xl font-black">
-              {total(x.k).toLocaleString("ar-EG")}
+              {total(x.k).toLocaleString("ar-EG-u-nu-latn")}
             </CardContent>
           </Card>
         ))}

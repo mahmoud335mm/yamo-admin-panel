@@ -42,7 +42,7 @@ function AuthenticatedLayout() {
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
-          <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/80 px-4 backdrop-blur">
+          <header className="yamo-topbar sticky top-0 z-30 flex h-16 items-center gap-2 border-b px-4 backdrop-blur-xl">
             <SidebarTrigger />
             <Separator orientation="vertical" className="h-5" />
             <Breadcrumbs />
@@ -53,7 +53,7 @@ function AuthenticatedLayout() {
               <UserMenu />
             </div>
           </header>
-          <main className="min-h-[calc(100vh-3.5rem)] bg-muted/30 p-6">
+          <main className="yamo-workspace min-h-[calc(100vh-4rem)] p-4 md:p-6 xl:p-8">
             <Outlet />
           </main>
         </SidebarInset>
