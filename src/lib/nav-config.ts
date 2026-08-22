@@ -289,8 +289,8 @@ export const navItems: NavItem[] = [
       { to: "/gifts", labelAr: "الهدايا", labelEn: "Gifts", icon: Gift, permission: "gifts.read" },
       {
         to: "/inventory",
-        labelAr: "المقتنيات",
-        labelEn: "Inventory",
+        labelAr: "المقتنيات والمؤثرات",
+        labelEn: "Media Inventory",
         icon: Package,
         permission: "gifts.read",
       },
