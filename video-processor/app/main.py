@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import gc
 import json
 import os
 import shutil
@@ -25,11 +26,11 @@ APP_NAME = "Yamo Advanced Entry Processor"
 BUCKET = "yamo-media-assets"
 SUPABASE_URL = os.getenv("SUPABASE_URL", "").rstrip("/")
 SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
-MODEL_NAME = os.getenv("REMBG_MODEL", "u2net")
+MODEL_NAME = os.getenv("REMBG_MODEL", "u2netp")
 MAX_CONCURRENT_JOBS = max(1, int(os.getenv("MAX_CONCURRENT_JOBS", "1")))
 MAX_DOWNLOAD_BYTES = int(os.getenv("MAX_DOWNLOAD_BYTES", str(60 * 1024 * 1024)))
-OUTPUT_FPS = max(10, min(20, int(os.getenv("OUTPUT_FPS", "15"))))
-MAX_FRAME_SIDE = max(480, min(960, int(os.getenv("MAX_FRAME_SIDE", "720"))))
+OUTPUT_FPS = max(8, min(15, int(os.getenv("OUTPUT_FPS", "10"))))
+MAX_FRAME_SIDE = max(320, min(720, int(os.getenv("MAX_FRAME_SIDE", "512"))))
 
 if not SUPABASE_URL or not SUPABASE_ANON_KEY:
     # Fail loudly at startup in real deployments, but keep module importable for syntax checks.
@@ -51,6 +52,8 @@ app.add_middleware(
 
 _job_semaphore = asyncio.Semaphore(MAX_CONCURRENT_JOBS)
 _jobs: dict[str, dict[str, Any]] = {}
+_job_requests: dict[str, Any] = {}
+_cancelled_jobs: set[str] = set()
 _session = None
 _session_lock = asyncio.Lock()
 
@@ -65,6 +68,7 @@ class EntryProcessRequest(BaseModel):
     quality: str = "auto"
     storage_paths: list[str] = Field(default_factory=list)
     max_duration_ms: int = Field(default=20_000, ge=1_000, le=20_000)
+    processing_mode: str = Field(default="ai", pattern="^(edges|ai)$")
 
 
 @dataclass
@@ -90,8 +94,10 @@ async def get_rembg_session():
             try:
                 _session = await asyncio.to_thread(new_session, MODEL_NAME)
             except Exception:
-                if MODEL_NAME != "u2net":
-                    _session = await asyncio.to_thread(new_session, "u2net")
+                # Never fall back to the large u2net model on small Render instances.
+                # u2netp is much lighter and keeps the service below the 512 MB hobby limit.
+                if MODEL_NAME != "u2netp":
+                    _session = await asyncio.to_thread(new_session, "u2netp")
                 else:
                     raise
     return _session
@@ -239,10 +245,61 @@ def make_checker_thumbnail(frame_path: Path, output: Path) -> None:
     canvas.convert("RGB").save(output, "WEBP", quality=88, method=6)
 
 
-def process_video_sync(source: Path, work: Path, max_duration_ms: int, keep_audio: bool, session: Any) -> ProcessResult:
+def auto_background_is_safe(source: Path) -> tuple[bool, dict[str, Any]]:
+    """Conservative pre-check used by Auto mode.
+
+    We only allow AI removal automatically when the outer border behaves like a
+    simple studio/green-screen background across multiple frames. Full scenes,
+    gradients, fire/smoke-heavy compositions and uncertain footage stay original.
+    """
+    capture = cv2.VideoCapture(str(source))
+    if not capture.isOpened():
+        return False, {"reason": "video_open_failed"}
+    frame_count = int(capture.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+    samples = [0.12, 0.5, 0.88]
+    scores: list[dict[str, float]] = []
+    try:
+        for fraction in samples:
+            if frame_count > 1:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, max(0, min(frame_count - 1, round((frame_count - 1) * fraction))))
+            ok, frame = capture.read()
+            if not ok or frame is None:
+                continue
+            frame = resize_frame(frame, 320)
+            h, w = frame.shape[:2]
+            band = max(3, round(min(h, w) * 0.06))
+            border = np.concatenate([
+                frame[:band, :, :].reshape(-1, 3), frame[-band:, :, :].reshape(-1, 3),
+                frame[:, :band, :].reshape(-1, 3), frame[:, -band:, :].reshape(-1, 3),
+            ], axis=0).astype(np.float32)
+            median = np.median(border, axis=0)
+            distance = np.linalg.norm(border - median, axis=1)
+            dominant = float(np.mean(distance < 24.0))
+            cy1, cy2 = round(h * 0.28), round(h * 0.72)
+            cx1, cx2 = round(w * 0.28), round(w * 0.72)
+            center = frame[cy1:cy2, cx1:cx2, :].reshape(-1, 3).astype(np.float32)
+            center_median = np.median(center, axis=0) if len(center) else median
+            separation = float(np.linalg.norm(center_median - median))
+            border_std = float(np.mean(np.std(border, axis=0)))
+            scores.append({"dominant": dominant, "separation": separation, "border_std": border_std})
+    finally:
+        capture.release()
+    if len(scores) < 2:
+        return False, {"reason": "not_enough_samples", "samples": scores}
+    safe_frames = sum(1 for x in scores if x["dominant"] >= 0.88 and x["border_std"] <= 24.0 and x["separation"] >= 34.0)
+    safe = safe_frames >= 2
+    return safe, {"reason": "simple_background" if safe else "complex_or_uncertain_scene", "safe_frames": safe_frames, "samples": scores}
+
+
+def ensure_not_cancelled(job_id: str) -> None:
+    if job_id in _cancelled_jobs:
+        raise RuntimeError("job_cancelled")
+
+
+def process_video_sync(source: Path, work: Path, max_duration_ms: int, keep_audio: bool, session: Any, job_id: str) -> ProcessResult:
     meta = probe_video(source)
     source_fps = max(1.0, min(meta["fps"], 60.0))
-    target_fps = max(10, min(OUTPUT_FPS, round(source_fps)))
+    target_fps = max(8, min(OUTPUT_FPS, round(source_fps)))
     duration_ms = int(min(max_duration_ms, max(1000.0, meta["duration"] * 1000.0)))
     duration_s = duration_ms / 1000.0
 
@@ -264,6 +321,7 @@ def process_video_sync(source: Path, work: Path, max_duration_ms: int, keep_audi
     output_size: tuple[int, int] | None = None
 
     for index, frame_path in enumerate(frame_paths, start=1):
+        ensure_not_cancelled(job_id)
         bgr = cv2.imread(str(frame_path), cv2.IMREAD_COLOR)
         if bgr is None:
             raise RuntimeError("frame_decode_failed")
@@ -288,7 +346,11 @@ def process_video_sync(source: Path, work: Path, max_duration_ms: int, keep_audi
         rgba = np.dstack([rgb, mask])
         Image.fromarray(rgba, "RGBA").save(rgba_dir / f"frame_{index:06d}.png", optimize=True)
         output_size = (rgb.shape[1], rgb.shape[0])
+        del bgr, rgb, mask_result, mask, rgba
+        if index % 12 == 0:
+            gc.collect()
 
+    ensure_not_cancelled(job_id)
     if output_size is None:
         raise RuntimeError("processor_output_missing")
     width, height = output_size
@@ -364,6 +426,97 @@ def process_video_sync(source: Path, work: Path, max_duration_ms: int, keep_audi
     )
 
 
+def process_edges_sync(source: Path, work: Path, max_duration_ms: int, keep_audio: bool, job_id: str) -> ProcessResult:
+    """Lightweight edge cleanup that NEVER removes the background.
+
+    It applies mild temporal/spatial denoise plus restrained sharpening, keeps
+    the whole frame, preserves aspect ratio, and stays much lighter than rembg.
+    """
+    ensure_not_cancelled(job_id)
+    meta = probe_video(source)
+    source_fps = max(1.0, min(meta["fps"], 60.0))
+    target_fps = max(12, min(30, round(source_fps)))
+    duration_ms = int(min(max_duration_ms, max(1000.0, meta["duration"] * 1000.0)))
+    duration_s = duration_ms / 1000.0
+
+    output = work / "media.mp4"
+    # Scale only when the longest side is above MAX_FRAME_SIDE. hqdn3d removes
+    # block/jagged noise and the small unsharp pass restores crisp detail.
+    vf = (
+        f"scale='if(gt(iw,ih),min(iw,{MAX_FRAME_SIDE}),-2)':"
+        f"'if(gt(iw,ih),-2,min(ih,{MAX_FRAME_SIDE}))':flags=lanczos,"
+        "hqdn3d=1.0:1.0:2.0:2.0,"
+        "unsharp=5:5:0.20:5:5:0.0"
+    )
+    command = [
+        "ffmpeg", "-y", "-i", str(source), "-t", f"{duration_s:.3f}",
+        "-vf", vf, "-r", str(target_fps),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "21",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+    ]
+    if keep_audio:
+        command += ["-c:a", "aac", "-b:a", "128k"]
+    else:
+        command += ["-an"]
+    command += [str(output)]
+    run_command(command)
+    ensure_not_cancelled(job_id)
+
+    if not output.exists() or output.stat().st_size < 1024:
+        raise RuntimeError("edge_smoothing_output_missing")
+    if output.stat().st_size > 49 * 1024 * 1024:
+        # Second pass, smaller and more compressed, to fit the storage bucket.
+        smaller = work / "media-small.mp4"
+        vf2 = (
+            "scale='if(gt(iw,ih),min(iw,540),-2)':"
+            "'if(gt(iw,ih),-2,min(ih,540))':flags=lanczos,"
+            "hqdn3d=1.0:1.0:2.0:2.0,"
+            "unsharp=5:5:0.18:5:5:0.0"
+        )
+        command2 = [
+            "ffmpeg", "-y", "-i", str(source), "-t", f"{duration_s:.3f}",
+            "-vf", vf2, "-r", str(min(target_fps, 24)),
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "25",
+            "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+        ]
+        if keep_audio:
+            command2 += ["-c:a", "aac", "-b:a", "96k"]
+        else:
+            command2 += ["-an"]
+        command2 += [str(smaller)]
+        run_command(command2)
+        output = smaller
+
+    if output.stat().st_size > 49 * 1024 * 1024:
+        raise RuntimeError("edge_smoothed_video_exceeds_50mb")
+
+    cap = cv2.VideoCapture(str(output))
+    try:
+        ok, frame = cap.read()
+        if not ok or frame is None:
+            raise RuntimeError("edge_thumbnail_frame_missing")
+        height, width = frame.shape[:2]
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        thumb = Image.fromarray(rgb)
+        thumb.thumbnail((640, 640), Image.Resampling.LANCZOS)
+        thumbnail = work / "thumbnail.webp"
+        thumb.save(thumbnail, "WEBP", quality=86, method=4)
+    finally:
+        cap.release()
+
+    return ProcessResult(
+        animation=output,
+        audio=None,  # audio is muxed into the MP4 when requested
+        thumbnail=thumbnail,
+        width=width,
+        height=height,
+        duration_ms=duration_ms,
+        file_size=output.stat().st_size,
+        fps=target_fps,
+        frame_count=max(1, round(duration_s * target_fps)),
+    )
+
+
 async def upload_storage(path: str, file_path: Path, content_type: str, token: str) -> str:
     encoded = "/".join(quote(part, safe="") for part in path.split("/"))
     url = f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{encoded}"
@@ -392,16 +545,95 @@ async def update_asset(asset_key: str, payload: dict[str, Any], token: str) -> N
 
 
 async def process_job(job_id: str, request: EntryProcessRequest, token: str) -> None:
-    _jobs[job_id] = {"status": "processing", "asset_key": request.asset_key, "progress": 3}
+    _jobs[job_id] = {"status": "processing", "asset_key": request.asset_key, "progress": 3, "mode": request.processing_mode}
     async with _job_semaphore:
         work_dir = Path(tempfile.mkdtemp(prefix=f"yamo-{request.asset_key}-"))
         try:
+            ensure_not_cancelled(job_id)
             source = work_dir / "source.bin"
             _jobs[job_id]["progress"] = 8
             await download_source(str(request.source_url), source)
+            ensure_not_cancelled(job_id)
             _jobs[job_id]["progress"] = 15
-            session = await get_rembg_session()
+
+            root = f"entry_effect/{request.asset_key}/processor-{job_id}"
+
+            # Mode 1: edge smoothing only. Background remains 100% intact and
+            # rembg/U2Net is never loaded, so this path is light on 512 MB RAM.
+            if request.processing_mode == "edges":
+                result = await asyncio.to_thread(
+                    process_edges_sync,
+                    source,
+                    work_dir,
+                    request.max_duration_ms,
+                    request.audio_enabled,
+                    job_id,
+                )
+                ensure_not_cancelled(job_id)
+                _jobs[job_id]["progress"] = 82
+                media_path = f"{root}/media.mp4"
+                thumb_path = f"{root}/thumbnail.webp"
+                media_url = await upload_storage(media_path, result.animation, "video/mp4", token)
+                thumb_url = await upload_storage(thumb_path, result.thumbnail, "image/webp", token)
+                storage_paths = list(dict.fromkeys([*request.storage_paths, media_path, thumb_path]))
+                metadata = {
+                    "processor": "yamo-entry-edges-v1-low-memory",
+                    "processor_job_id": job_id,
+                    "entry_processing_mode": "edges",
+                    "background_removed": False,
+                    "edge_smoothing_only": True,
+                    "transparent_animation": False,
+                    "render_format": "mp4",
+                    "audio_url": None,
+                    "audio_separate_track": False,
+                    "fps": result.fps,
+                    "frame_count": result.frame_count,
+                    "max_duration_ms": request.max_duration_ms,
+                    "source_url": str(request.source_url),
+                    "original_url": str(request.original_url),
+                    "storage_paths": storage_paths,
+                    "enabled_after_processing": request.enabled_after_processing,
+                    "presentation": {"anchor": "room_center", "fit": "contain", "crop": False, "preserve_aspect_ratio": True, "max_duration_ms": 20_000},
+                }
+                await update_asset(
+                    request.asset_key,
+                    {
+                        "media_url": media_url,
+                        "thumbnail_url": thumb_url,
+                        "preview_url": thumb_url,
+                        "media_type": "video",
+                        "mime_type": "video/mp4",
+                        "processing_status": "ready",
+                        "processing_error": "",
+                        "audio_enabled": request.audio_enabled,
+                        "remove_background": False,
+                        "width": result.width,
+                        "height": result.height,
+                        "duration_ms": result.duration_ms,
+                        "file_size_bytes": result.file_size,
+                        "quality": request.quality,
+                        "enabled": request.enabled_after_processing,
+                        "metadata": metadata,
+                    },
+                    token,
+                )
+                _jobs[job_id] = {
+                    "status": "ready",
+                    "asset_key": request.asset_key,
+                    "progress": 100,
+                    "mode": "edges",
+                    "decision": "edges_smoothed_background_preserved",
+                    "media_url": media_url,
+                    "thumbnail_url": thumb_url,
+                }
+                return
+
+            # Mode 2: explicit AI background removal. This is the ONLY mode that
+            # loads U2Net/rembg and creates a transparent Animated WebP.
             _jobs[job_id]["progress"] = 20
+            session = await get_rembg_session()
+            ensure_not_cancelled(job_id)
+            _jobs[job_id]["progress"] = 24
             result = await asyncio.to_thread(
                 process_video_sync,
                 source,
@@ -409,13 +641,15 @@ async def process_job(job_id: str, request: EntryProcessRequest, token: str) -> 
                 request.max_duration_ms,
                 request.audio_enabled,
                 session,
+                job_id,
             )
+            ensure_not_cancelled(job_id)
             _jobs[job_id]["progress"] = 82
 
-            root = f"entry_effect/{request.asset_key}/processor-{job_id}"
             media_path = f"{root}/media.webp"
             thumb_path = f"{root}/thumbnail.webp"
             media_url = await upload_storage(media_path, result.animation, "image/webp", token)
+            ensure_not_cancelled(job_id)
             thumb_url = await upload_storage(thumb_path, result.thumbnail, "image/webp", token)
             storage_paths = list(dict.fromkeys([*request.storage_paths, media_path, thumb_path]))
 
@@ -425,10 +659,14 @@ async def process_job(job_id: str, request: EntryProcessRequest, token: str) -> 
                 audio_url = await upload_storage(audio_path, result.audio, "audio/mp4", token)
                 storage_paths.append(audio_path)
 
+            ensure_not_cancelled(job_id)
             _jobs[job_id]["progress"] = 92
             metadata = {
-                "processor": "yamo-ai-background-v1",
+                "processor": "yamo-ai-background-v2-low-memory",
+                "processor_job_id": job_id,
+                "entry_processing_mode": "ai",
                 "background_removed": True,
+                "edge_smoothing_only": False,
                 "transparent_animation": True,
                 "render_format": "animated_webp",
                 "audio_url": audio_url,
@@ -439,9 +677,11 @@ async def process_job(job_id: str, request: EntryProcessRequest, token: str) -> 
                 "source_url": str(request.source_url),
                 "original_url": str(request.original_url),
                 "storage_paths": storage_paths,
+                "enabled_after_processing": request.enabled_after_processing,
                 "edge_feathered": True,
                 "temporal_mask_smoothing": True,
                 "auto_cropped_to_foreground": True,
+                "presentation": {"anchor": "room_center", "fit": "contain", "crop": False, "preserve_aspect_ratio": True, "max_duration_ms": 20_000},
             }
             await update_asset(
                 request.asset_key,
@@ -469,27 +709,53 @@ async def process_job(job_id: str, request: EntryProcessRequest, token: str) -> 
                 "status": "ready",
                 "asset_key": request.asset_key,
                 "progress": 100,
+                "mode": "ai",
+                "decision": "background_removed",
                 "media_url": media_url,
                 "thumbnail_url": thumb_url,
                 "audio_url": audio_url,
             }
         except Exception as exc:
             message = str(exc)[:800]
-            _jobs[job_id] = {"status": "failed", "asset_key": request.asset_key, "progress": 100, "error": message}
-            try:
-                await update_asset(
-                    request.asset_key,
-                    {
-                        "processing_status": "failed",
-                        "processing_error": message,
-                        "enabled": False,
-                    },
-                    token,
-                )
-            except Exception:
-                pass
+            cancelled = message == "job_cancelled"
+            if cancelled:
+                try:
+                    await update_asset(
+                        request.asset_key,
+                        {
+                            "processing_status": "ready",
+                            "processing_error": "",
+                            "remove_background": False,
+                            "enabled": request.enabled_after_processing,
+                        },
+                        token,
+                    )
+                except Exception:
+                    pass
+                _jobs[job_id] = {
+                    "status": "cancelled",
+                    "asset_key": request.asset_key,
+                    "progress": 100,
+                    "mode": request.processing_mode,
+                    "decision": "source_preserved",
+                }
+            else:
+                _jobs[job_id] = {"status": "failed", "asset_key": request.asset_key, "progress": 100, "error": message}
+                try:
+                    await update_asset(
+                        request.asset_key,
+                        {
+                            "processing_status": "failed",
+                            "processing_error": message,
+                            "enabled": False,
+                        },
+                        token,
+                    )
+                except Exception:
+                    pass
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
+            gc.collect()
 
 
 @app.get("/health")
@@ -501,6 +767,8 @@ async def health():
         "max_concurrent_jobs": MAX_CONCURRENT_JOBS,
         "output_fps": OUTPUT_FPS,
         "max_frame_side": MAX_FRAME_SIDE,
+        "low_memory_profile": True,
+        "processing_modes": ["edges", "ai"],
         "config_error": CONFIG_ERROR or None,
     }
 
@@ -513,6 +781,18 @@ async def job_status(job_id: str, authorization: str | None = Header(default=Non
     if job is None:
         raise HTTPException(status_code=404, detail="job_not_found")
     return job
+
+
+@app.post("/v1/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str, authorization: str | None = Header(default=None)):
+    token = bearer_token(authorization)
+    await verify_catalog_admin(token)
+    job = _jobs.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job_not_found")
+    _cancelled_jobs.add(job_id)
+    _jobs[job_id] = {**job, "status": "cancelling"}
+    return {"cancelled": True, "jobId": job_id}
 
 
 def bearer_token(value: str | None) -> str:
@@ -535,11 +815,13 @@ async def process_entry(
     if not request.asset_key.upper().startswith("ENT-"):
         raise HTTPException(status_code=400, detail="entry_asset_key_required")
     job_id = uuid.uuid4().hex
-    _jobs[job_id] = {"status": "queued", "asset_key": request.asset_key, "progress": 0}
+    _job_requests[job_id] = request
+    _jobs[job_id] = {"status": "queued", "asset_key": request.asset_key, "progress": 0, "mode": request.processing_mode}
     background_tasks.add_task(process_job, job_id, request, token)
     return {
         "accepted": True,
         "jobId": job_id,
         "status": "queued",
-        "message": "Yamo AI video processing queued",
+        "mode": request.processing_mode,
+        "message": "Yamo entry processing queued",
     }

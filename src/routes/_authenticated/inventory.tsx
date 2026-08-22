@@ -20,6 +20,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  Undo2,
   Users,
   WandSparkles,
   Volume2,
@@ -39,6 +40,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { searchYamoAdminUsers, yamoRows, yamoRpc, type YamoAdminUserLookup } from "@/lib/yamo-admin";
 import {
   advancedVideoProcessorConfigured,
+  cancelAdvancedEntryVideoProcessing,
   formatBytes,
   prepareMediaAsset,
   publicFileName,
@@ -47,6 +49,7 @@ import {
   setAdvancedVideoProcessorUrl,
   advancedVideoProcessorUrl,
   uploadPreparedMedia,
+  type EntryProcessingMode,
   type MediaAssetKind,
 } from "@/lib/media-assets";
 
@@ -104,6 +107,12 @@ const kindCode: Record<MediaAssetKind, string> = {
   room_background: "BG-000001",
 };
 
+const entryModeLabel: Record<EntryProcessingMode, string> = {
+  source: "زي ما هي",
+  edges: "تنعيم الحواف",
+  ai: "إزالة الخلفية AI",
+};
+
 function InventoryCenter() {
   const qc = useQueryClient();
   const [mainTab, setMainTab] = useState("effects");
@@ -148,6 +157,83 @@ function InventoryCenter() {
     void qc.invalidateQueries({ queryKey: ["admin_media_assets"] });
     void qc.invalidateQueries({ queryKey: ["admin_asset_reward_rules"] });
     void qc.invalidateQueries({ queryKey: ["admin_asset_reward_queue"] });
+  };
+
+  const useOriginalEntry = async (asset: AssetRow) => {
+    if (asset.asset_kind !== "entry_effect") return;
+    const meta = parseMetadata(asset.metadata);
+    const jobId = String(meta.processor_job_id || "").trim();
+    try {
+      if (jobId) await cancelAdvancedEntryVideoProcessing(jobId).catch(() => undefined);
+      await yamoRpc("admin_update_yamo_media_asset", {
+        p_asset_kind: "entry_effect",
+        p_asset_key: asset.asset_key,
+        p_payload: {
+          processing_status: "ready",
+          processing_error: "",
+          remove_background: false,
+          enabled: meta.enabled_after_processing !== false,
+          metadata: {
+            ...meta,
+            entry_processing_mode: "source",
+            processor_job_id: "",
+            processor_cancelled_at: new Date().toISOString(),
+            auto_decision: "use_source",
+            presentation: { anchor: "room_center", fit: "contain", crop: false, preserve_aspect_ratio: true, max_duration_ms: 20_000 },
+          },
+        },
+      });
+      toast.success("تم اعتماد النسخة الأصلية وإيقاف انتظار المعالجة.");
+      refreshAll();
+    } catch (error) { toast.error(errorMessage(error)); }
+  };
+
+  const retryEntryProcessing = async (asset: AssetRow) => {
+    if (asset.asset_kind !== "entry_effect") return;
+    const meta = parseMetadata(asset.metadata);
+    const rawMode = String(meta.entry_processing_mode || (meta.advanced_background_removal ? "ai" : "edges"));
+    const processingMode: EntryProcessingMode = rawMode === "ai" ? "ai" : "edges";
+    const sourceUrl = String(asset.media_url || asset.original_url || "");
+    if (!sourceUrl) return toast.error("لا يوجد ملف أصل صالح لإعادة المعالجة.");
+    if (!advancedVideoProcessorConfigured()) return toast.error("اربط معالج الفيديو أولًا.");
+    try {
+      await yamoRpc("admin_update_yamo_media_asset", {
+        p_asset_kind: "entry_effect",
+        p_asset_key: asset.asset_key,
+        p_payload: {
+          processing_status: "processing",
+          processing_error: processingMode === "edges" ? "إعادة محاولة تنعيم الحواف بدون إزالة الخلفية." : "إعادة محاولة إزالة الخلفية AI.",
+          enabled: false,
+          metadata: { ...meta, entry_processing_mode: processingMode, processor_job_id: "" },
+        },
+      });
+      const job = await startAdvancedEntryVideoProcessing({
+        assetKey: asset.asset_key,
+        sourceUrl,
+        originalUrl: String(asset.original_url || sourceUrl),
+        thumbnailUrl: String(asset.thumbnail_url || asset.preview_url || "") || null,
+        audioEnabled: Boolean(asset.audio_enabled),
+        enabledAfterProcessing: meta.enabled_after_processing !== false,
+        quality: String(asset.quality || "auto"),
+        storagePaths: readStoragePaths(asset.metadata),
+        maxDurationMs: 20_000,
+        processingMode,
+      });
+      await yamoRpc("admin_update_yamo_media_asset", {
+        p_asset_kind: "entry_effect",
+        p_asset_key: asset.asset_key,
+        p_payload: { metadata: { ...meta, entry_processing_mode: processingMode, processor_job_id: job.jobId || "" } },
+      });
+      toast.success("بدأت إعادة المعالجة.");
+      refreshAll();
+    } catch (error) {
+      await yamoRpc("admin_update_yamo_media_asset", {
+        p_asset_kind: "entry_effect", p_asset_key: asset.asset_key,
+        p_payload: { processing_status: "failed", processing_error: errorMessage(error), enabled: false, metadata: meta },
+      }).catch(() => undefined);
+      toast.error(errorMessage(error));
+      refreshAll();
+    }
   };
 
   return (
@@ -226,6 +312,8 @@ function InventoryCenter() {
             onPreview={setPreviewAsset}
             onEdit={(asset) => setAssetDialog({ open: true, asset })}
             onGrant={setGrantAsset}
+            onUseOriginal={useOriginalEntry}
+            onRetryProcessing={retryEntryProcessing}
             onDelete={async (asset) => {
               if (!window.confirm(`حذف ${kindLabel[asset.asset_kind]} «${asset.name_ar ?? asset.asset_key}»؟ سيتم سحبها من المستخدمين أيضًا.`)) return;
               try {
@@ -259,6 +347,8 @@ function InventoryCenter() {
             onPreview={setPreviewAsset}
             onEdit={(asset) => setAssetDialog({ open: true, asset })}
             onGrant={setGrantAsset}
+            onUseOriginal={useOriginalEntry}
+            onRetryProcessing={retryEntryProcessing}
             onDelete={async (asset) => {
               if (!window.confirm(`حذف الخلفية «${asset.name_ar ?? asset.asset_key}»؟`)) return;
               try {
@@ -358,13 +448,15 @@ function SearchBox({ value, onChange }: { value: string; onChange: (v: string) =
   );
 }
 
-function AssetGrid({ rows, loading, error, onPreview, onEdit, onGrant, onDelete }: {
+function AssetGrid({ rows, loading, error, onPreview, onEdit, onGrant, onUseOriginal, onRetryProcessing, onDelete }: {
   rows: AssetRow[];
   loading: boolean;
   error: Error | null;
   onPreview: (row: AssetRow) => void;
   onEdit: (row: AssetRow) => void;
   onGrant: (row: AssetRow) => void;
+  onUseOriginal: (row: AssetRow) => void | Promise<void>;
+  onRetryProcessing: (row: AssetRow) => void | Promise<void>;
   onDelete: (row: AssetRow) => void | Promise<void>;
 }) {
   if (loading) return <div className="grid min-h-64 place-items-center rounded-2xl border bg-card/60"><Loader2 className="h-7 w-7 animate-spin" /></div>;
@@ -372,21 +464,26 @@ function AssetGrid({ rows, loading, error, onPreview, onEdit, onGrant, onDelete 
   if (!rows.length) return <div className="grid min-h-56 place-items-center rounded-2xl border border-dashed bg-card/50 text-sm text-muted-foreground">لا توجد عناصر في هذا القسم حتى الآن.</div>;
   return (
     <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-      {rows.map((asset) => <AssetCard key={`${asset.asset_kind}:${asset.asset_key}`} asset={asset} onPreview={onPreview} onEdit={onEdit} onGrant={onGrant} onDelete={onDelete} />)}
+      {rows.map((asset) => <AssetCard key={`${asset.asset_kind}:${asset.asset_key}`} asset={asset} onPreview={onPreview} onEdit={onEdit} onGrant={onGrant} onUseOriginal={onUseOriginal} onRetryProcessing={onRetryProcessing} onDelete={onDelete} />)}
     </div>
   );
 }
 
-function AssetCard({ asset, onPreview, onEdit, onGrant, onDelete }: {
+function AssetCard({ asset, onPreview, onEdit, onGrant, onUseOriginal, onRetryProcessing, onDelete }: {
   asset: AssetRow;
   onPreview: (row: AssetRow) => void;
   onEdit: (row: AssetRow) => void;
   onGrant: (row: AssetRow) => void;
+  onUseOriginal: (row: AssetRow) => void | Promise<void>;
+  onRetryProcessing: (row: AssetRow) => void | Promise<void>;
   onDelete: (row: AssetRow) => void | Promise<void>;
 }) {
   const thumb = String(asset.thumbnail_url || asset.preview_url || "");
   const status = String(asset.processing_status || "ready");
   const ready = status === "ready";
+  const meta = parseMetadata(asset.metadata);
+  const mode = String(meta.entry_processing_mode || (asset.remove_background ? "ai" : "source")) as EntryProcessingMode;
+  const recoverableEntry = asset.asset_kind === "entry_effect" && status !== "ready";
   return (
     <Card className="group overflow-hidden border-border/70 bg-card/90 shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-xl">
       <div className="relative aspect-[16/9] overflow-hidden bg-gradient-to-br from-violet-950/60 to-orange-950/30">
@@ -415,7 +512,9 @@ function AssetCard({ asset, onPreview, onEdit, onGrant, onDelete }: {
           <MiniMeta label="المقاس" value={asset.width && asset.height ? `${asset.width}×${asset.height}` : "تلقائي"} />
           <MiniMeta label="الحجم" value={formatBytes(Number(asset.file_size_bytes ?? 0))} />
         </div>
+        {asset.asset_kind === "entry_effect" && <div className="flex flex-wrap items-center gap-2 text-[11px]"><Badge variant="outline" className="rounded-full">{entryModeLabel[mode] || entryModeLabel.source}</Badge><span className="text-muted-foreground">العرض: منتصف الروم • Fit بدون قص</span></div>}
         {asset.processing_error && <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-2.5 text-[11px] leading-5 text-amber-300">{asset.processing_error}</div>}
+        {recoverableEntry && <div className="flex flex-wrap gap-2 rounded-xl border border-violet-500/15 bg-violet-500/5 p-2.5"><Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => void onUseOriginal(asset)}><Undo2 className="ml-1 h-3.5 w-3.5" /> استخدام الأصل الآن</Button>{status !== "processing" && <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onRetryProcessing(asset)}><RefreshCw className="ml-1 h-3.5 w-3.5" /> إعادة المعالجة</Button>}</div>}
         <div className="flex flex-wrap gap-2 border-t pt-3">
           <Button size="sm" variant="outline" className="flex-1 rounded-xl" onClick={() => onPreview(asset)}><Eye className="ml-1 h-3.5 w-3.5" /> معاينة</Button>
           <Button size="sm" variant="outline" className="rounded-xl" onClick={() => onEdit(asset)}><Pencil className="h-3.5 w-3.5" /></Button>
@@ -460,7 +559,14 @@ function AssetEditorDialog({ open, onOpenChange, asset, initialKind, onSaved }: 
   const [sortOrder, setSortOrder] = useState(String(asset?.sort_order ?? 0));
   const [enabled, setEnabled] = useState(asset?.enabled ?? true);
   const [audio, setAudio] = useState(asset?.audio_enabled ?? false);
-  const [removeBg, setRemoveBg] = useState(asset?.remove_background ?? (kind !== "room_background"));
+  const savedMeta = parseMetadata(asset?.metadata);
+  const savedEntryMode = String(savedMeta.entry_processing_mode || "") as EntryProcessingMode;
+  const [entryMode, setEntryMode] = useState<EntryProcessingMode>(
+    savedEntryMode === "source" || savedEntryMode === "auto" || savedEntryMode === "ai"
+      ? savedEntryMode
+      : asset?.remove_background ? "ai" : "source",
+  );
+  const [removeBg, setRemoveBg] = useState(asset?.remove_background ?? (kind === "frame"));
   const [file, setFile] = useState<File | null>(null);
   const [thumbnail, setThumbnail] = useState<File | null>(null);
   const [busyText, setBusyText] = useState("");
@@ -469,7 +575,7 @@ function AssetEditorDialog({ open, onOpenChange, asset, initialKind, onSaved }: 
   const identity = `${open}:${asset?.asset_kind ?? initialKind ?? "entry_effect"}:${asset?.asset_key ?? "new"}`;
   return <AssetEditorInner key={identity} {...{
     open,onOpenChange,asset,initialKind,onSaved,editing,kind,setKind,name,setName,price,setPrice,days,setDays,quality,setQuality,sortOrder,setSortOrder,
-    enabled,setEnabled,audio,setAudio,removeBg,setRemoveBg,file,setFile,thumbnail,setThumbnail,busyText,setBusyText,
+    enabled,setEnabled,audio,setAudio,entryMode,setEntryMode,removeBg,setRemoveBg,file,setFile,thumbnail,setThumbnail,busyText,setBusyText,
   }} />;
 }
 
@@ -477,10 +583,10 @@ function AssetEditorInner(props: {
   open: boolean; onOpenChange: (v: boolean) => void; asset?: AssetRow; initialKind?: MediaAssetKind; onSaved: () => void; editing: boolean;
   kind: MediaAssetKind; setKind: (v: MediaAssetKind) => void; name: string; setName: (v: string) => void; price: string; setPrice: (v: string) => void;
   days: string; setDays: (v: string) => void; quality: string; setQuality: (v: string) => void; sortOrder: string; setSortOrder: (v: string) => void;
-  enabled: boolean; setEnabled: (v: boolean) => void; audio: boolean; setAudio: (v: boolean) => void; removeBg: boolean; setRemoveBg: (v: boolean) => void;
+  enabled: boolean; setEnabled: (v: boolean) => void; audio: boolean; setAudio: (v: boolean) => void; entryMode: EntryProcessingMode; setEntryMode: (v: EntryProcessingMode) => void; removeBg: boolean; setRemoveBg: (v: boolean) => void;
   file: File | null; setFile: (v: File | null) => void; thumbnail: File | null; setThumbnail: (v: File | null) => void; busyText: string; setBusyText: (v: string) => void;
 }) {
-  const { open,onOpenChange,asset,onSaved,editing,kind,setKind,name,setName,price,setPrice,days,setDays,quality,setQuality,sortOrder,setSortOrder,enabled,setEnabled,audio,setAudio,removeBg,setRemoveBg,file,setFile,thumbnail,setThumbnail,busyText,setBusyText } = props;
+  const { open,onOpenChange,asset,onSaved,editing,kind,setKind,name,setName,price,setPrice,days,setDays,quality,setQuality,sortOrder,setSortOrder,enabled,setEnabled,audio,setAudio,entryMode,setEntryMode,removeBg,setRemoveBg,file,setFile,thumbnail,setThumbnail,busyText,setBusyText } = props;
   const mutation = useMutation({
     mutationFn: async () => {
       if (!name.trim()) throw new Error("اكتب اسم العنصر");
@@ -488,20 +594,28 @@ function AssetEditorInner(props: {
       let uploaded: Awaited<ReturnType<typeof uploadPreparedMedia>> | null = null;
       let saved = false;
       let code = asset?.asset_key ?? "";
-      const advancedVideo = Boolean(file && kind === "entry_effect" && file.type.startsWith("video/") && removeBg);
+      const advancedVideo = Boolean(file && kind === "entry_effect" && file.type.startsWith("video/") && entryMode !== "source");
       const processorReady = advancedVideoProcessorConfigured();
       try {
         if (file) {
-          setBusyText(advancedVideo ? "قص الدخلة وتجهيز الأصل للمعالج الذكي…" : "تحليل الفيديو والقص التلقائي وإنشاء الصورة المصغرة…");
-          // فيديو الدخلة الذي يحتاج إزالة خلفية يمر أولاً بمرحلة آمنة محلية
-          // (قص/صوت/Thumbnail) ثم يُرسل للمعالج الحقيقي على السيرفر.
-          const prepared = await prepareMediaAsset(file, kind, advancedVideo ? false : removeBg, thumbnail, audio);
+          setBusyText(advancedVideo ? "قص الدخلة وتجهيز النسخة الأصلية الآمنة…" : "تحليل الملف والقص التلقائي وإنشاء الصورة المصغرة…");
+          // "زي ما هي" لا تدخل المعالج إطلاقًا.
+          // "تنعيم الحواف" يحافظ على الخلفية ويعالج الحواف فقط، وAI هو الوحيد الذي يزيل الخلفية.
+          const localRemoveBackground = kind === "frame" ? removeBg : kind === "entry_effect" && file.type.startsWith("image/") ? entryMode === "ai" : false;
+          const prepared = await prepareMediaAsset(file, kind, localRemoveBackground, thumbnail, audio);
+          prepared.metadata = {
+            ...prepared.metadata,
+            entry_processing_mode: kind === "entry_effect" ? entryMode : undefined,
+            presentation: kind === "entry_effect" ? { anchor: "room_center", fit: "contain", crop: false, preserve_aspect_ratio: true, max_duration_ms: 20_000 } : undefined,
+          };
           if (advancedVideo) {
             prepared.processingStatus = processorReady ? "processing" : "needs_processor";
             prepared.processingError = processorReady
-              ? "جاري إزالة الخلفية Frame-by-Frame وتحسين الحواف على معالج Yamo."
+              ? entryMode === "edges"
+                ? "جاري تنعيم الحواف فقط بدون إزالة الخلفية."
+                : "جاري إزالة الخلفية AI. النسخة الأصلية محفوظة ويمكن الرجوع لها."
               : "تم تجهيز الملف، لكن رابط معالج الفيديو غير مضبوط بعد.";
-            prepared.metadata = { ...prepared.metadata, advanced_background_removal: true, processor_required: true };
+            prepared.metadata = { ...prepared.metadata, advanced_background_removal: entryMode === "ai", edge_smoothing_only: entryMode === "edges", processor_required: true };
           }
           setBusyText("رفع الأصل وملفات المعاينة…");
           uploaded = await uploadPreparedMedia(prepared, kind);
@@ -515,7 +629,7 @@ function AssetEditorInner(props: {
           sort_order: Number(sortOrder || 0),
           enabled: advancedVideo ? false : enabled,
           audio_enabled: kind === "entry_effect" ? audio : false,
-          remove_background: kind === "room_background" ? false : removeBg,
+          remove_background: kind === "frame" ? removeBg : false,
         };
         if (uploaded) Object.assign(payload, {
           media_url: uploaded.mediaUrl,
@@ -535,6 +649,8 @@ function AssetEditorInner(props: {
             ...uploaded.metadata,
             storage_paths: uploaded.storagePaths,
             enabled_after_processing: enabled,
+            entry_processing_mode: kind === "entry_effect" ? entryMode : undefined,
+            presentation: kind === "entry_effect" ? { anchor: "room_center", fit: "contain", crop: false, preserve_aspect_ratio: true, max_duration_ms: 20_000 } : undefined,
           },
         });
         setBusyText(editing ? "حفظ التعديلات…" : "إنشاء الكود التلقائي وحفظ العنصر…");
@@ -549,9 +665,9 @@ function AssetEditorInner(props: {
         }
 
         if (advancedVideo && uploaded && processorReady) {
-          setBusyText("إرسال الدخلة لمعالج إزالة الخلفية الحقيقي…");
+          setBusyText(entryMode === "edges" ? "إرسال الدخلة لتنعيم الحواف…" : "إرسال الدخلة لمعالج إزالة الخلفية…");
           try {
-            await startAdvancedEntryVideoProcessing({
+            const job = await startAdvancedEntryVideoProcessing({
               assetKey: code,
               sourceUrl: uploaded.mediaUrl,
               originalUrl: uploaded.originalUrl,
@@ -561,6 +677,21 @@ function AssetEditorInner(props: {
               quality,
               storagePaths: uploaded.storagePaths,
               maxDurationMs: 20_000,
+              processingMode: entryMode,
+            });
+            const currentMeta = {
+              ...priorMeta,
+              ...uploaded.metadata,
+              storage_paths: uploaded.storagePaths,
+              enabled_after_processing: enabled,
+              entry_processing_mode: entryMode,
+              processor_job_id: job.jobId || "",
+              presentation: { anchor: "room_center", fit: "contain", crop: false, preserve_aspect_ratio: true, max_duration_ms: 20_000 },
+            };
+            await yamoRpc("admin_update_yamo_media_asset", {
+              p_asset_kind: "entry_effect",
+              p_asset_key: code,
+              p_payload: { metadata: currentMeta },
             });
           } catch (processorError) {
             await yamoRpc("admin_update_yamo_media_asset", {
@@ -580,14 +711,14 @@ function AssetEditorInner(props: {
           const oldPaths = readStoragePaths(asset?.metadata);
           if (oldPaths.length) await removeUploadedMedia(oldPaths).catch(() => undefined);
         }
-        return { code, advancedVideo, processorReady };
+        return { code, advancedVideo, processorReady, entryMode };
       } catch (error) {
         if (!saved && uploaded?.storagePaths?.length) await removeUploadedMedia(uploaded.storagePaths).catch(() => undefined);
         throw error;
       } finally { setBusyText(""); }
     },
-    onSuccess: ({ code, advancedVideo, processorReady }) => {
-      if (advancedVideo && processorReady) toast.success(`تم رفع ${code} وبدأت إزالة الخلفية تلقائيًا. سيظهر «جاهز» بعد انتهاء المعالجة.`);
+    onSuccess: ({ code, advancedVideo, processorReady, entryMode: savedMode }) => {
+      if (advancedVideo && processorReady) toast.success(savedMode === "edges" ? `تم رفع ${code} وبدأ تنعيم الحواف بدون إزالة الخلفية.` : `تم رفع ${code} وبدأت إزالة الخلفية AI. الأصل محفوظ ويمكن الرجوع له.`);
       else if (advancedVideo) toast.warning(`تم حفظ ${code} لكنه ينتظر ربط معالج الفيديو.`);
       else toast.success(editing ? "تم حفظ التعديلات" : `تمت إضافة العنصر بالكود ${code}`);
       onSaved();
@@ -607,7 +738,7 @@ function AssetEditorInner(props: {
           <div className="space-y-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="نوع العنصر">
-                <Select value={kind} disabled={editing} onValueChange={(v) => { const k=v as MediaAssetKind; setKind(k); setRemoveBg(k !== "room_background"); }}>
+                <Select value={kind} disabled={editing} onValueChange={(v) => { const k=v as MediaAssetKind; setKind(k); setEntryMode("source"); setRemoveBg(k === "frame"); }}>
                   <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
                   <SelectContent><SelectItem value="entry_effect">دخلة</SelectItem><SelectItem value="frame">إطار</SelectItem><SelectItem value="room_background">خلفية روم</SelectItem></SelectContent>
                 </Select>
@@ -632,20 +763,42 @@ function AssetEditorInner(props: {
             <UploadBox title={editing ? "استبدال ملف العنصر (اختياري)" : "ملف العنصر"} description={kind === "frame" ? "PNG / WebP / JPG — ستُحافظ المعالجة على الشفافية." : kind === "entry_effect" ? "MP4 / WebM أو صورة — الدخلة حتى 20 ثانية، والأطول يُقص تلقائيًا إلى 20 ثانية." : "صورة أو MP4/WebM — الخلفية المتحركة حتى 5 ثوانٍ، والأطول يُقص تلقائيًا إلى 5 ثوانٍ ثم يعمل Loop."} file={file} onChange={setFile} accept={kind === "frame" ? "image/png,image/webp,image/jpeg" : "image/*,video/mp4,video/webm,video/quicktime"} />
             <UploadBox title="صورة مصغرة مخصصة — اختياري" description="لو سيبتها فارغة، اللوحة تنشئ Thumbnail تلقائيًا من الصورة أو لقطة من الفيديو." file={thumbnail} onChange={setThumbnail} accept="image/*" compact />
 
+            {kind === "entry_effect" && (
+              <div className="space-y-2 rounded-2xl border border-violet-500/15 bg-violet-500/[0.04] p-3">
+                <div>
+                  <Label>طريقة تجهيز الدخلة</Label>
+                  <p className="mt-1 text-[10px] leading-5 text-muted-foreground">اختار بالظبط المطلوب للدخلة: تفضل كما هي، تنعيم الحواف فقط، أو إزالة الخلفية بالذكاء الاصطناعي.</p>
+                </div>
+                <Select value={entryMode} onValueChange={(v) => setEntryMode(v as EntryProcessingMode)}>
+                  <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="source">زي ما هي — بدون تعديل</SelectItem>
+                    <SelectItem value="edges">تنعيم الحواف — بدون إزالة الخلفية</SelectItem>
+                    <SelectItem value="ai">إزالة الخلفية AI</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className="rounded-xl border bg-background/50 p-2.5 text-[11px] leading-5 text-muted-foreground">
+                  {entryMode === "source" && "سيتم القص عند 20 ثانية وتجهيز الملف فقط، بدون تغيير الخلفية أو الحواف أو المؤثرات."}
+                  {entryMode === "edges" && "سيتم تنعيم الحواف وتقليل التكسير حول التفاصيل مع الحفاظ على الخلفية كاملة كما هي."}
+                  {entryMode === "ai" && "سيحاول إزالة الخلفية وإنشاء نسخة شفافة. النسخة الأصلية تظل محفوظة ويمكن الرجوع لها من بطاقة الدخلة."}
+                </div>
+              </div>
+            )}
             <div className="grid gap-3 sm:grid-cols-2">
-              {kind !== "room_background" && <ToggleCard icon={WandSparkles} title="تنظيف الخلفية والحواف" description={kind === "frame" ? "ينظف الخلفية المتصلة بالحواف ويحافظ على الرسم الداخلي." : "لفيديو الدخلة: إزالة خلفية AI حقيقية Frame-by-Frame + تنعيم حواف ثم نشر تلقائي عند النجاح."} checked={removeBg} onCheckedChange={setRemoveBg} />}
+              {kind === "frame" && <ToggleCard icon={WandSparkles} title="تنظيف خلفية الإطار" description="ينظف الخلفية المتصلة بالحواف ويحافظ على الرسم الداخلي." checked={removeBg} onCheckedChange={setRemoveBg} />}
               {kind === "entry_effect" && <ToggleCard icon={audio ? Volume2 : VolumeX} title="تشغيل صوت الدخلة" description="لو مقفول، التطبيق يعرض الدخلة بدون صوت." checked={audio} onCheckedChange={setAudio} />}
               <ToggleCard icon={ShieldCheck} title="متاح للمستخدمين" description="لن يصبح متاحًا فعليًا إلا بعد حالة «جاهز»." checked={enabled} onCheckedChange={setEnabled} />
             </div>
           </div>
           <div className="space-y-3">
-            <Label>المعاينة</Label>
-            <div className="relative grid min-h-[360px] place-items-center overflow-hidden rounded-3xl border bg-gradient-to-br from-violet-950/55 to-orange-950/25 p-4">
+            <div className="flex items-center justify-between gap-2"><Label>معاينة داخل الروم</Label>{kind === "entry_effect" && <Badge variant="outline" className="rounded-full">منتصف الروم • Center + Fit</Badge>}</div>
+            <div className="relative grid min-h-[360px] place-items-center overflow-hidden rounded-3xl border bg-gradient-to-br from-violet-950/55 via-slate-950/80 to-orange-950/25 p-4">
+              {kind === "entry_effect" && <><div className="pointer-events-none absolute inset-x-4 top-4 flex justify-between"><div className="h-8 w-24 rounded-full border border-white/10 bg-black/20"/><div className="h-8 w-20 rounded-full border border-white/10 bg-black/20"/></div><div className="pointer-events-none absolute inset-x-6 bottom-5 grid grid-cols-4 gap-4 opacity-35">{[1,2,3,4].map((n)=><div key={n} className="mx-auto h-10 w-10 rounded-full border border-white/25 bg-black/25"/>)}</div></>}
               {preview ? (file?.type.startsWith("video/") || (!file && asset?.media_type === "video") ? <video src={preview} controls muted={!audio} loop className="max-h-[430px] max-w-full rounded-2xl object-contain" /> : <img src={preview} alt="معاينة" className="max-h-[430px] max-w-full rounded-2xl object-contain" />) : <div className="text-center text-muted-foreground"><Upload className="mx-auto mb-3 h-10 w-10" /><div className="font-bold">المعاينة تظهر هنا</div><div className="mt-1 text-xs">ارفع الملف فقط، ولا تحتاج صورة مصغرة منفصلة.</div></div>}
               <Badge className="absolute left-3 top-3 rounded-full bg-black/55 text-white">{kindLabel[kind]}</Badge>
             </div>
             <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 p-3 text-xs leading-6 text-muted-foreground">
-              <strong className="text-foreground">المعالجة الآمنة:</strong> الدخلة تُقص تلقائيًا عند 20 ثانية، ثم عند تفعيل تنظيف الخلفية تُرسل لمعالج Yamo الحقيقي لإزالة الخلفية Frame-by-Frame وتنعيم الحواف وإخراج نسخة شفافة. خلفية الروم تُقص عند 5 ثوانٍ وتُجهز للـLoop، والصورة المصغرة تتولد تلقائيًا.
+              <strong className="text-foreground">المعالجة الآمنة:</strong> الدخلة تظهر في منتصف الروم بنظام Center + Fit بدون قص أو مطّ وتحافظ على نسبة الأبعاد. «زي ما هي» لا تعدّل الصورة، «تنعيم الحواف» يحافظ على الخلفية، و«إزالة الخلفية AI» هو الوحيد الذي ينشئ شفافية. الحد الأقصى 20 ثانية والصوت اختياري.
             </div>
           </div>
         </div>

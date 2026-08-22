@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
 
 export type MediaAssetKind = "entry_effect" | "frame" | "room_background";
-export type MediaProcessingStatus = "ready" | "needs_processor" | "failed";
+export type EntryProcessingMode = "source" | "edges" | "ai";
+export type MediaProcessingStatus = "ready" | "processing" | "needs_processor" | "failed";
 
 export type PreparedMedia = {
   original: File;
@@ -575,6 +576,7 @@ export async function startAdvancedEntryVideoProcessing(input: {
   quality: string;
   storagePaths: string[];
   maxDurationMs?: number;
+  processingMode?: EntryProcessingMode;
 }) {
   const baseUrl = advancedVideoProcessorUrl();
   if (!baseUrl) throw new Error("معالج فيديو الدخلات غير مربوط بعد. أضف VITE_YAMO_MEDIA_PROCESSOR_URL ثم أعد النشر.");
@@ -599,10 +601,27 @@ export async function startAdvancedEntryVideoProcessing(input: {
       quality: input.quality,
       storage_paths: input.storagePaths,
       max_duration_ms: Math.min(Math.max(input.maxDurationMs ?? 20_000, 1_000), 20_000),
+      processing_mode: input.processingMode ?? "ai",
     }),
   });
   const payload = await response.json().catch(() => ({})) as AdvancedProcessorJob & { detail?: string };
   if (!response.ok) throw new Error(payload.detail || payload.message || `فشل تشغيل معالج الفيديو (${response.status})`);
   if (!payload.accepted) throw new Error(payload.message || "معالج الفيديو لم يقبل المهمة");
   return payload;
+}
+
+export async function cancelAdvancedEntryVideoProcessing(jobId: string) {
+  const baseUrl = advancedVideoProcessorUrl();
+  if (!baseUrl || !jobId.trim()) return { cancelled: false };
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const token = session?.access_token;
+  if (!token) throw new Error("انتهت جلسة لوحة التحكم. سجّل الدخول مرة أخرى.");
+  const response = await fetch(`${baseUrl}/v1/jobs/${encodeURIComponent(jobId.trim())}/cancel`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const payload = await response.json().catch(() => ({})) as { cancelled?: boolean; detail?: string };
+  if (!response.ok && response.status !== 404) throw new Error(payload.detail || `فشل إلغاء المعالجة (${response.status})`);
+  return { cancelled: Boolean(payload.cancelled) };
 }

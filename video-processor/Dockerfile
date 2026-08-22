@@ -17,8 +17,8 @@ COPY app ./app
 # allows outbound downloads. If it fails, rembg will retry on the first job.
 RUN mkdir -p /models && python - <<'PY' || true
 from rembg import new_session
-new_session('u2net')
-print('u2net ready')
+new_session('u2netp')
+print('u2netp ready')
 PY
 
 EXPOSE 8080
