@@ -342,9 +342,33 @@ async function makeVideoThumbnail(file: File) {
       video.onloadedmetadata = () => resolve();
       video.onerror = () => reject(new Error("تعذر قراءة الفيديو لإنشاء المعاينة"));
     });
-    const target = Math.min(Math.max(video.duration * 0.2, 0.05), Math.max(video.duration - 0.05, 0.05));
-    video.currentTime = target;
-    await new Promise<void>((resolve) => { video.onseeked = () => resolve(); });
+    // MediaRecorder-generated WebM files in Chromium can temporarily report
+    // duration === Infinity. Never pass a non-finite value to currentTime.
+    let duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    if (!duration && video.seekable.length > 0) {
+      const seekableEnd = video.seekable.end(video.seekable.length - 1);
+      if (Number.isFinite(seekableEnd) && seekableEnd > 0) duration = seekableEnd;
+    }
+
+    const target = duration > 0
+      ? Math.min(Math.max(duration * 0.2, 0.05), Math.max(duration - 0.05, 0.05))
+      : 0;
+
+    if (Number.isFinite(target) && target > 0) {
+      video.currentTime = target;
+      await new Promise<void>((resolve, reject) => {
+        const timer = window.setTimeout(resolve, 1500);
+        video.onseeked = () => { window.clearTimeout(timer); resolve(); };
+        video.onerror = () => { window.clearTimeout(timer); reject(new Error("تعذر تجهيز لقطة معاينة الفيديو")); };
+      });
+    } else {
+      await new Promise<void>((resolve, reject) => {
+        if (video.readyState >= 2) return resolve();
+        const timer = window.setTimeout(resolve, 1500);
+        video.onloadeddata = () => { window.clearTimeout(timer); resolve(); };
+        video.onerror = () => { window.clearTimeout(timer); reject(new Error("تعذر تجهيز لقطة معاينة الفيديو")); };
+      });
+    }
 
     const size = 480;
     const canvas = document.createElement("canvas");
@@ -399,9 +423,12 @@ export async function prepareMediaAsset(
     const processedFile = processed instanceof File
       ? processed
       : blobToFile(processed, `media.${extensionForMime(processedMimeType)}`);
+    // Build the thumbnail from the original upload. Chromium may report
+    // duration=Infinity for a freshly recorded/transcoded WebM blob, which is
+    // valid media but unsafe to seek until its duration metadata is finalized.
     const thumbnail = customThumbnail
       ? (await imageToWebp(customThumbnail, 720, 0.9)).blob
-      : await makeVideoThumbnail(processedFile);
+      : await makeVideoThumbnail(file);
     const needsProcessor = kind === "entry_effect" && removeBackground;
     return {
       original: file,
