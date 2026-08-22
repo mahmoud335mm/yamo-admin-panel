@@ -36,7 +36,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
-import { yamoRows, yamoRpc } from "@/lib/yamo-admin";
+import { searchYamoAdminUsers, yamoRows, yamoRpc, type YamoAdminUserLookup } from "@/lib/yamo-admin";
 import {
   advancedVideoProcessorConfigured,
   formatBytes,
@@ -313,7 +313,7 @@ function StatCard({ icon: Icon, label, value, note }: { icon: typeof Sparkles; l
       <CardContent className="flex items-center justify-between p-4">
         <div>
           <p className="text-xs text-muted-foreground">{label}</p>
-          <p className="mt-1 text-3xl font-black tabular-nums">{value.toLocaleString("ar-EG")}</p>
+          <p className="mt-1 text-3xl font-black tabular-nums">{value.toLocaleString("en-US")}</p>
           <p className="mt-1 text-[11px] text-muted-foreground">{note}</p>
         </div>
         <div className="rounded-2xl bg-gradient-to-br from-violet-500/20 to-orange-500/20 p-3 text-violet-400">
@@ -406,7 +406,7 @@ function AssetCard({ asset, onPreview, onEdit, onGrant, onDelete }: {
             </button>
           </div>
           <div className="text-left text-xs text-muted-foreground">
-            <div className="font-bold text-foreground">{Number(asset.owner_count ?? 0).toLocaleString("ar-EG")}</div>
+            <div className="font-bold text-foreground">{Number(asset.owner_count ?? 0).toLocaleString("en-US")}</div>
             <div>مالك</div>
           </div>
         </div>
@@ -623,11 +623,11 @@ function AssetEditorInner(props: {
                 <Select value={quality} onValueChange={setQuality}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="auto">تلقائي</SelectItem><SelectItem value="hd">HD</SelectItem><SelectItem value="fhd">FHD</SelectItem><SelectItem value="4k">4K</SelectItem></SelectContent></Select>
               </Field>
             </div>
-            <div className="grid gap-4 sm:grid-cols-3">
-              <Field label="السعر بالكوينز"><Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className="rounded-xl" /></Field>
-              <Field label="الصلاحية بالأيام"><Input type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} placeholder="فارغ = دائم" className="rounded-xl" /></Field>
-              <Field label="ترتيب الظهور"><Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="rounded-xl" /></Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="السعر بالكوينز"><Input type="number" min={0} value={price} onChange={(e) => setPrice(e.target.value)} className="rounded-xl font-mono" dir="ltr" /></Field>
+              <Field label="ترتيب الظهور"><Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="rounded-xl font-mono" dir="ltr" /></Field>
             </div>
+            <DurationDaysPicker label="صلاحية العنصر" value={days} onChange={setDays} />
 
             <UploadBox title={editing ? "استبدال ملف العنصر (اختياري)" : "ملف العنصر"} description={kind === "frame" ? "PNG / WebP / JPG — ستُحافظ المعالجة على الشفافية." : kind === "entry_effect" ? "MP4 / WebM أو صورة — الدخلة حتى 20 ثانية، والأطول يُقص تلقائيًا إلى 20 ثانية." : "صورة أو MP4/WebM — الخلفية المتحركة حتى 5 ثوانٍ، والأطول يُقص تلقائيًا إلى 5 ثوانٍ ثم يعمل Loop."} file={file} onChange={setFile} accept={kind === "frame" ? "image/png,image/webp,image/jpeg" : "image/*,video/mp4,video/webm,video/quicktime"} />
             <UploadBox title="صورة مصغرة مخصصة — اختياري" description="لو سيبتها فارغة، اللوحة تنشئ Thumbnail تلقائيًا من الصورة أو لقطة من الفيديو." file={thumbnail} onChange={setThumbnail} accept="image/*" compact />
@@ -660,6 +660,59 @@ function AssetEditorInner(props: {
 
 function Field({ label, children }: { label: string; children: ReactNode }) { return <div className="space-y-1.5"><Label>{label}</Label>{children}</div>; }
 
+
+const durationPresets = [1, 3, 7, 15, 30, 90, 180, 365] as const;
+
+function DurationDaysPicker({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  const days = Number(value);
+  const hasDays = value.trim() !== "" && Number.isFinite(days) && days > 0;
+  const normalized = hasDays ? String(Math.floor(days)) : "";
+  const expiry = hasDays
+    ? new Intl.DateTimeFormat("ar-EG-u-nu-latn", { year: "numeric", month: "short", day: "2-digit" }).format(new Date(Date.now() + Math.floor(days) * 86_400_000))
+    : null;
+
+  return (
+    <div className="space-y-2.5 rounded-2xl border border-violet-500/15 bg-violet-500/[0.04] p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Label>{label}</Label>
+        <Badge variant="outline" className={`rounded-full ${hasDays ? "border-violet-500/30 text-violet-300" : "border-emerald-500/30 text-emerald-400"}`}>
+          {hasDays ? `${normalized} يوم` : "دائم"}
+        </Badge>
+      </div>
+      <div className="flex flex-wrap gap-2" dir="ltr">
+        <Button type="button" size="sm" variant={!hasDays ? "default" : "outline"} className="h-8 rounded-xl px-3" onClick={() => onChange("")}>دائم</Button>
+        {durationPresets.map((preset) => (
+          <Button
+            key={preset}
+            type="button"
+            size="sm"
+            variant={normalized === String(preset) ? "default" : "outline"}
+            className="h-8 rounded-xl px-3 tabular-nums"
+            onClick={() => onChange(String(preset))}
+          >
+            {preset} يوم
+          </Button>
+        ))}
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+        <Input
+          type="number"
+          min={1}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="عدد أيام مخصص"
+          className="rounded-xl font-mono tabular-nums"
+          dir="ltr"
+        />
+        <div className="min-w-44 text-[11px] leading-5 text-muted-foreground">
+          {expiry ? <>تاريخ الانتهاء المتوقع: <span dir="ltr" className="font-semibold text-foreground">{expiry}</span></> : "بدون تاريخ انتهاء حتى يتم تغييره."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function UploadBox({ title, description, file, onChange, accept, compact=false }: { title: string; description: string; file: File | null; onChange: (f: File | null) => void; accept: string; compact?: boolean }) {
   return (
     <label className={`block cursor-pointer rounded-2xl border border-dashed border-violet-500/30 bg-violet-500/5 transition hover:bg-violet-500/10 ${compact ? "p-3" : "p-4"}`}>
@@ -678,14 +731,116 @@ function ToggleCard({ icon: Icon, title, description, checked, onCheckedChange }
 
 function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onClose: () => void; onSaved: () => void }) {
   const [userId, setUserId] = useState("");
+  const [selectedUser, setSelectedUser] = useState<YamoAdminUserLookup | null>(null);
   const [days, setDays] = useState("");
   const [reason, setReason] = useState("منح من لوحة التحكم");
+  const lookupTerm = userId.trim();
+  const lookupQ = useQuery({
+    queryKey: ["admin-user-grant-lookup", lookupTerm],
+    queryFn: () => searchYamoAdminUsers(lookupTerm, 6),
+    enabled: Boolean(asset) && !selectedUser && lookupTerm.length > 0,
+    staleTime: 10_000,
+  });
+
+  const resetAndClose = () => {
+    setUserId("");
+    setSelectedUser(null);
+    setDays("");
+    setReason("منح من لوحة التحكم");
+    onClose();
+  };
+
+  const chooseUser = (user: YamoAdminUserLookup) => {
+    setSelectedUser(user);
+    setUserId(user.legacy_id);
+  };
+
   const mutation = useMutation({
-    mutationFn: () => yamoRpc("admin_grant_user_asset", { p_legacy_id: userId.trim(), p_asset_kind: asset?.asset_kind, p_asset_key: asset?.asset_key, p_days: days.trim() ? Number(days) : null, p_reason: reason.trim() || null }),
-    onSuccess: () => { toast.success("تم إرسال المقتنى للمستخدم"); setUserId(""); setDays(""); onSaved(); onClose(); },
+    mutationFn: () => yamoRpc("admin_grant_user_asset", { p_legacy_id: selectedUser?.legacy_id, p_asset_kind: asset?.asset_kind, p_asset_key: asset?.asset_key, p_days: days.trim() ? Number(days) : null, p_reason: reason.trim() || null }),
+    onSuccess: () => { toast.success(`تم إرسال المقتنى إلى ${selectedUser?.display_name || selectedUser?.legacy_id || "المستخدم"}`); onSaved(); resetAndClose(); },
     onError: (e) => toast.error(errorMessage(e)),
   });
-  return <Dialog open={Boolean(asset)} onOpenChange={(v) => !v && onClose()}><DialogContent dir="rtl" className="max-w-lg"><DialogHeader><DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-violet-400" /> منح لمستخدم</DialogTitle><DialogDescription>{asset ? `${asset.name_ar ?? asset.asset_key} — ${asset.asset_key}` : ""}</DialogDescription></DialogHeader><div className="space-y-4"><Field label="ID المستخدم"><Input value={userId} onChange={(e) => setUserId(e.target.value)} placeholder="مثال 100025" className="rounded-xl" dir="ltr" /></Field><Field label="مدة المنح بالأيام"><Input type="number" min={1} value={days} onChange={(e) => setDays(e.target.value)} placeholder="فارغ = دائم" className="rounded-xl" /></Field><Field label="سبب المنح"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-xl" /></Field></div><DialogFooter className="gap-2 sm:justify-start"><Button disabled={!userId.trim() || mutation.isPending} onClick={() => mutation.mutate()} className="rounded-xl">{mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "إرسال للمستخدم"}</Button><Button variant="outline" className="rounded-xl" onClick={onClose}>إلغاء</Button></DialogFooter></DialogContent></Dialog>;
+
+  return (
+    <Dialog open={Boolean(asset)} onOpenChange={(v) => !v && resetAndClose()}>
+      <DialogContent dir="rtl" className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Send className="h-5 w-5 text-violet-400" /> منح لمستخدم</DialogTitle>
+          <DialogDescription>{asset ? `${asset.name_ar ?? asset.asset_key} — ${asset.asset_key}` : ""}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4">
+          <Field label="ID المستخدم">
+            {selectedUser ? (
+              <SelectedGrantUser user={selectedUser} onChange={() => { setSelectedUser(null); setUserId(""); }} />
+            ) : (
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={userId}
+                    onChange={(e) => setUserId(e.target.value)}
+                    placeholder="اكتب ID المستخدم، مثال 100025"
+                    className="rounded-xl pr-9"
+                    dir="ltr"
+                    autoComplete="off"
+                  />
+                </div>
+                {lookupQ.isFetching && <div className="flex items-center gap-2 rounded-xl border bg-muted/25 px-3 py-2 text-xs text-muted-foreground"><Loader2 className="h-3.5 w-3.5 animate-spin" /> جاري البحث عن الحساب…</div>}
+                {!lookupQ.isFetching && lookupTerm && lookupQ.isError && <div className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">تعذر البحث عن المستخدم. حاول مرة أخرى.</div>}
+                {!lookupQ.isFetching && lookupTerm && !lookupQ.isError && (lookupQ.data?.length ?? 0) === 0 && <div className="rounded-xl border border-dashed px-3 py-2 text-xs text-muted-foreground">لا يوجد حساب بهذا الـID.</div>}
+                {(lookupQ.data?.length ?? 0) > 0 && (
+                  <div className="max-h-64 space-y-2 overflow-y-auto rounded-2xl border bg-card/80 p-2 shadow-lg">
+                    {lookupQ.data!.map((user) => <GrantUserSearchResult key={user.id} user={user} onSelect={() => chooseUser(user)} />)}
+                  </div>
+                )}
+              </div>
+            )}
+          </Field>
+          <DurationDaysPicker label="مدة المنح" value={days} onChange={setDays} />
+          <Field label="سبب المنح"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-xl" /></Field>
+        </div>
+        <DialogFooter className="gap-2 sm:justify-start">
+          <Button disabled={!selectedUser || mutation.isPending} onClick={() => mutation.mutate()} className="rounded-xl">{mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "إرسال للمستخدم"}</Button>
+          <Button variant="outline" className="rounded-xl" onClick={resetAndClose}>إلغاء</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function GrantUserSearchResult({ user, onSelect }: { user: YamoAdminUserLookup; onSelect: () => void }) {
+  return (
+    <button type="button" onClick={onSelect} className="flex w-full items-center gap-3 rounded-xl border border-transparent p-2.5 text-right transition hover:border-violet-500/30 hover:bg-violet-500/10">
+      <UserAvatar user={user} />
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-black">{user.display_name || "بدون اسم"}</div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+          <span dir="ltr" className="font-mono font-bold text-violet-300">ID: {user.legacy_id}</span>
+          {user.level != null && <span>LVL {user.level}</span>}
+          {(user.vip_level ?? 0) > 0 && <span className="text-orange-400">VIP {user.vip_level}</span>}
+        </div>
+      </div>
+      <BadgeCheck className="h-5 w-5 shrink-0 text-violet-400" />
+    </button>
+  );
+}
+
+function SelectedGrantUser({ user, onChange }: { user: YamoAdminUserLookup; onChange: () => void }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+      <UserAvatar user={user} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2"><span className="truncate text-sm font-black">{user.display_name || "بدون اسم"}</span><Badge className="rounded-full bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/15">تم الاختيار</Badge></div>
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground"><span dir="ltr" className="font-mono font-bold text-foreground">ID: {user.legacy_id}</span>{user.level != null && <span>LVL {user.level}</span>}{(user.vip_level ?? 0) > 0 && <span className="text-orange-400">VIP {user.vip_level}</span>}{user.account_status && <span>{user.account_status}</span>}</div>
+      </div>
+      <Button type="button" size="sm" variant="outline" className="shrink-0 rounded-xl" onClick={onChange}>تغيير</Button>
+    </div>
+  );
+}
+
+function UserAvatar({ user }: { user: YamoAdminUserLookup }) {
+  if (user.avatar_url) return <img src={user.avatar_url} alt={user.display_name} className="h-11 w-11 shrink-0 rounded-full border object-cover" />;
+  return <div className="grid h-11 w-11 shrink-0 place-items-center rounded-full border bg-gradient-to-br from-violet-500/20 to-orange-500/20 text-sm font-black">{(user.display_name || user.legacy_id || "?").slice(0, 1).toUpperCase()}</div>;
 }
 
 function PreviewDialog({ asset, onClose }: { asset: AssetRow | null; onClose: () => void }) {
@@ -702,7 +857,7 @@ function RewardsPanel({ rules, queue, loading, assets, onAdd, onEdit, onRefresh 
 
 function RewardRuleCard({ rule, onEdit, onDeleted }: { rule: RewardRule; onEdit: () => void; onDeleted: () => void }) {
   const items = readRuleItems(rule.items);
-  const trigger = rule.trigger_type === "game_spend" ? `لعب بـ ${Number(rule.trigger_value).toLocaleString("ar-EG")} كوينز` : rule.trigger_type === "level" ? `الوصول إلى Level ${rule.trigger_value}` : rule.trigger_type === "event" ? `فعالية: ${rule.trigger_key ?? "—"}` : rule.trigger_type === "task" ? `مهمة: ${rule.trigger_key ?? "—"}` : `${rule.trigger_value} أيام دخول`;
+  const trigger = rule.trigger_type === "game_spend" ? `لعب بـ ${Number(rule.trigger_value).toLocaleString("en-US")} كوينز` : rule.trigger_type === "level" ? `الوصول إلى Level ${rule.trigger_value}` : rule.trigger_type === "event" ? `فعالية: ${rule.trigger_key ?? "—"}` : rule.trigger_type === "task" ? `مهمة: ${rule.trigger_key ?? "—"}` : `${rule.trigger_value} أيام دخول`;
   const delay = rule.delay_mode === "next_day" ? "اليوم التالي" : rule.delay_mode === "hours" ? `بعد ${rule.delay_hours} ساعة` : "فورًا";
   return <Card className="border-emerald-500/15 bg-card/90"><CardContent className="space-y-4 p-4"><div className="flex items-start justify-between gap-3"><div><div className="flex items-center gap-2"><h3 className="font-black">{rule.name_ar}</h3><Badge variant="outline" className={rule.enabled ? "border-emerald-500/30 text-emerald-400" : "text-muted-foreground"}>{rule.enabled ? "مفعلة" : "متوقفة"}</Badge></div><p className="mt-1 text-xs text-muted-foreground">{trigger} • {delay}</p></div><Gift className="h-5 w-5 text-emerald-400" /></div><div className="flex flex-wrap gap-2">{items.map((i) => <Badge key={`${i.asset_kind}:${i.asset_key}`} className="rounded-full bg-violet-500/10 text-violet-300 hover:bg-violet-500/10"><span dir="ltr">{i.asset_key}</span> · {kindLabel[i.asset_kind]}</Badge>)}</div><div className="flex gap-2 border-t pt-3"><Button size="sm" variant="outline" className="rounded-xl" onClick={onEdit}><Pencil className="ml-1 h-3.5 w-3.5" /> تعديل</Button><Button size="sm" variant="outline" className="rounded-xl text-destructive hover:text-destructive" onClick={async () => { if (!window.confirm("حذف قاعدة المكافأة؟")) return; try { await yamoRpc("admin_delete_asset_reward_rule", { p_rule_id: rule.id }); toast.success("تم حذف القاعدة"); onDeleted(); } catch (e) { toast.error(errorMessage(e)); } }}><Trash2 className="ml-1 h-3.5 w-3.5" /> حذف</Button></div></CardContent></Card>;
 }
@@ -745,7 +900,7 @@ function RewardRuleDialog({ open, onOpenChange, rule, assets, onSaved }: { open:
 }
 
 function RewardDialogInner({ open,onOpenChange,assets,name,setName,triggerType,setTriggerType,triggerKey,setTriggerKey,triggerValue,setTriggerValue,delayMode,setDelayMode,delayHours,setDelayHours,enabled,setEnabled,reward1,setReward1,reward2,setReward2,rewardDays,setRewardDays,mutation }: any) {
-  return <Dialog open={open} onOpenChange={(v) => !mutation.isPending && onOpenChange(v)}><DialogContent dir="rtl" className="max-w-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2"><Gift className="h-5 w-5 text-emerald-400" /> قاعدة مكافأة تلقائية</DialogTitle><DialogDescription>مثال: إنفاق 50,000 كوينز اليوم → دخلة + إطار في اليوم التالي.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="اسم القاعدة"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="مكافأة 50 ألف كوينز" className="rounded-xl" /></Field><Field label="نوع الشرط"><Select value={triggerType} onValueChange={(v) => { setTriggerType(v); if (v === "game_spend") { setTriggerKey("GAME_SPEND_COINS"); setTriggerValue("50000"); setDelayMode("next_day"); } }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="game_spend">لعب / إنفاق كوينز</SelectItem><SelectItem value="level">Level</SelectItem><SelectItem value="event">فعالية</SelectItem></SelectContent></Select></Field><Field label={triggerType === "level" ? "رقم الـLevel" : triggerType === "game_spend" ? "إجمالي الكوينز" : "كود الفعالية"}>{triggerType === "event" ? <Input value={triggerKey} onChange={(e) => setTriggerKey(e.target.value)} className="rounded-xl" /> : <Input type="number" min={1} value={triggerValue} onChange={(e) => setTriggerValue(e.target.value)} className="rounded-xl" />}</Field><Field label="موعد النزول"><Select value={delayMode} onValueChange={setDelayMode}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="immediate">فورًا</SelectItem><SelectItem value="next_day">اليوم التالي</SelectItem><SelectItem value="hours">بعد عدد ساعات</SelectItem></SelectContent></Select></Field>{delayMode === "hours" && <Field label="عدد الساعات"><Input type="number" min={0} value={delayHours} onChange={(e) => setDelayHours(e.target.value)} className="rounded-xl" /></Field>}<Field label="المكافأة الأولى"><AssetSelect value={reward1} onChange={setReward1} assets={assets} allowNone={false} /></Field><Field label="المكافأة الثانية — اختياري"><AssetSelect value={reward2} onChange={setReward2} assets={assets} allowNone /></Field><Field label="صلاحية المكافأة بالأيام"><Input type="number" min={1} value={rewardDays} onChange={(e) => setRewardDays(e.target.value)} placeholder="فارغ = دائم" className="rounded-xl" /></Field><div className="sm:col-span-2"><ToggleCard icon={ShieldCheck} title="القاعدة مفعلة" description="عند الإيقاف لن تُنشأ مكافآت جديدة من هذه القاعدة." checked={enabled} onCheckedChange={setEnabled} /></div></div>{triggerType === "game_spend" && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-6 text-amber-200">الحساب آمن: قيمة اللعب لا تأتي من الموبايل. يجب أن يسجل Backend اللعبة الإنفاق الحقيقي في <span dir="ltr" className="font-mono">yamo_record_reward_metric(..., 'GAME_SPEND_COINS', amount)</span>.</div>}<DialogFooter className="gap-2 sm:justify-start"><Button disabled={mutation.isPending} className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => mutation.mutate()}>{mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ القاعدة"}</Button><Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>إلغاء</Button></DialogFooter></DialogContent></Dialog>;
+  return <Dialog open={open} onOpenChange={(v) => !mutation.isPending && onOpenChange(v)}><DialogContent dir="rtl" className="max-w-2xl"><DialogHeader><DialogTitle className="flex items-center gap-2"><Gift className="h-5 w-5 text-emerald-400" /> قاعدة مكافأة تلقائية</DialogTitle><DialogDescription>مثال: إنفاق 50,000 كوينز اليوم → دخلة + إطار في اليوم التالي.</DialogDescription></DialogHeader><div className="grid gap-4 sm:grid-cols-2"><Field label="اسم القاعدة"><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="مكافأة 50 ألف كوينز" className="rounded-xl" /></Field><Field label="نوع الشرط"><Select value={triggerType} onValueChange={(v) => { setTriggerType(v); if (v === "game_spend") { setTriggerKey("GAME_SPEND_COINS"); setTriggerValue("50000"); setDelayMode("next_day"); } }}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="game_spend">لعب / إنفاق كوينز</SelectItem><SelectItem value="level">Level</SelectItem><SelectItem value="event">فعالية</SelectItem></SelectContent></Select></Field><Field label={triggerType === "level" ? "رقم الـLevel" : triggerType === "game_spend" ? "إجمالي الكوينز" : "كود الفعالية"}>{triggerType === "event" ? <Input value={triggerKey} onChange={(e) => setTriggerKey(e.target.value)} className="rounded-xl" /> : <Input type="number" min={1} value={triggerValue} onChange={(e) => setTriggerValue(e.target.value)} className="rounded-xl font-mono" dir="ltr" />}</Field><Field label="موعد النزول"><Select value={delayMode} onValueChange={setDelayMode}><SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="immediate">فورًا</SelectItem><SelectItem value="next_day">اليوم التالي</SelectItem><SelectItem value="hours">بعد عدد ساعات</SelectItem></SelectContent></Select></Field>{delayMode === "hours" && <Field label="عدد الساعات"><Input type="number" min={0} value={delayHours} onChange={(e) => setDelayHours(e.target.value)} className="rounded-xl font-mono" dir="ltr" /></Field>}<Field label="المكافأة الأولى"><AssetSelect value={reward1} onChange={setReward1} assets={assets} allowNone={false} /></Field><Field label="المكافأة الثانية — اختياري"><AssetSelect value={reward2} onChange={setReward2} assets={assets} allowNone /></Field><div className="sm:col-span-2"><DurationDaysPicker label="صلاحية المكافأة" value={rewardDays} onChange={setRewardDays} /></div><div className="sm:col-span-2"><ToggleCard icon={ShieldCheck} title="القاعدة مفعلة" description="عند الإيقاف لن تُنشأ مكافآت جديدة من هذه القاعدة." checked={enabled} onCheckedChange={setEnabled} /></div></div>{triggerType === "game_spend" && <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs leading-6 text-amber-200">الحساب آمن: قيمة اللعب لا تأتي من الموبايل. يجب أن يسجل Backend اللعبة الإنفاق الحقيقي في <span dir="ltr" className="font-mono">yamo_record_reward_metric(..., 'GAME_SPEND_COINS', amount)</span>.</div>}<DialogFooter className="gap-2 sm:justify-start"><Button disabled={mutation.isPending} className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => mutation.mutate()}>{mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "حفظ القاعدة"}</Button><Button variant="outline" className="rounded-xl" onClick={() => onOpenChange(false)}>إلغاء</Button></DialogFooter></DialogContent></Dialog>;
 }
 
 function AssetSelect({ value, onChange, assets, allowNone }: { value: string; onChange: (v: string) => void; assets: AssetRow[]; allowNone: boolean }) {

@@ -33,6 +33,50 @@ export async function yamoRows(source: string, limit = 200): Promise<Record<stri
   return (data ?? []) as Record<string, unknown>[];
 }
 
+
+export type YamoAdminUserLookup = {
+  id: string;
+  legacy_id: string;
+  display_name: string;
+  avatar_url?: string | null;
+  gender?: string | null;
+  account_status?: string | null;
+  level?: number | null;
+  vip_level?: number | null;
+};
+
+/**
+ * Lightweight admin-side user lookup used by grant/send dialogs.
+ * Searches the permission-gated admin_profiles view by Yamo legacy ID.
+ */
+export async function searchYamoAdminUsers(term: string, limit = 8): Promise<YamoAdminUserLookup[]> {
+  const needle = term.trim();
+  if (!needle) return [];
+
+  // admin_profiles is a Yamo compatibility view that may not be present in the
+  // generated Supabase TS schema yet, so keep this isolated cast here.
+  const table = supabase.from("admin_profiles" as never) as any;
+  const { data, error } = await table
+    .select("id,legacy_id,display_name,avatar_url,gender,account_status,level,vip_level")
+    .ilike("legacy_id", `%${needle}%`)
+    .order("legacy_id", { ascending: true })
+    .limit(Math.max(1, Math.min(limit, 12)));
+
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[])
+    .map((row) => ({
+      id: String(row.id ?? ""),
+      legacy_id: String(row.legacy_id ?? ""),
+      display_name: String(row.display_name ?? row.legacy_id ?? ""),
+      avatar_url: row.avatar_url ? String(row.avatar_url) : null,
+      gender: row.gender ? String(row.gender) : null,
+      account_status: row.account_status ? String(row.account_status) : null,
+      level: row.level == null ? null : Number(row.level),
+      vip_level: row.vip_level == null ? null : Number(row.vip_level),
+    }))
+    .filter((row) => row.id && row.legacy_id);
+}
+
 export async function yamoRpc<T = unknown>(
   name: string,
   args: Record<string, unknown> = {},

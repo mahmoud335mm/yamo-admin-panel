@@ -62,8 +62,8 @@ function BDDetail() {
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <Stat label="عدد الوكالات" value={String(agencies.data?.length ?? 0)} />
             <Stat label="مضيفون نشطون" value={`${activeHosts} / ${totalHosts}`} />
-            <Stat label="عملات الشهر" value={monthlyCoins.toLocaleString()} />
-            <Stat label="إجمالي العمولة" value={totalCommission.toLocaleString()} />
+            <Stat label="عملات الشهر" value={monthlyCoins.toLocaleString("en-US")} />
+            <Stat label="إجمالي العمولة" value={totalCommission.toLocaleString("en-US")} />
           </div>
         </CardHeader>
       </Card>
@@ -86,7 +86,7 @@ function BDDetail() {
                     <TableCell><Badge variant={a.status === "active" ? "default" : "destructive"}>{a.status}</Badge></TableCell>
                     <TableCell>Lv {a.level_id ?? "—"}</TableCell>
                     <TableCell className="font-mono">{a.active_hosts}/{a.total_hosts}</TableCell>
-                    <TableCell className="font-mono">{a.monthly_coins.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono">{a.monthly_coins.toLocaleString("en-US")}</TableCell>
                   </TableRow>
                 ))}</TableBody></Table>
             )}
@@ -101,9 +101,9 @@ function BDDetail() {
                   <TableRow key={c.id}>
                     <TableCell>{c.period_year}/{String(c.period_month).padStart(2, "0")}</TableCell>
                     <TableCell className="font-mono text-xs">{c.agency_id?.slice(0, 8) ?? "—"}</TableCell>
-                    <TableCell className="font-mono">{c.gross_coins.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono">{c.gross_coins.toLocaleString("en-US")}</TableCell>
                     <TableCell className="font-mono">{c.commission_pct}%</TableCell>
-                    <TableCell className="font-mono font-bold">{c.commission_coins.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono font-bold">{c.commission_coins.toLocaleString("en-US")}</TableCell>
                     <TableCell><Badge variant={c.status === "paid" ? "default" : "secondary"}>{c.status}</Badge></TableCell>
                   </TableRow>
                 ))}</TableBody></Table>

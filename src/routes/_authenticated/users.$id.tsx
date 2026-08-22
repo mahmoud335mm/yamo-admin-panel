@@ -192,8 +192,8 @@ function UserDetail() {
             {wallets.map((w) => (
               <div key={w.account} className="rounded-lg border p-4">
                 <div className="text-xs text-muted-foreground">{w.account}</div>
-                <div className="mt-1 text-2xl font-bold">{w.balance.toLocaleString()}</div>
-                <div className="text-xs text-muted-foreground">محجوز: {w.reserved.toLocaleString()}</div>
+                <div className="mt-1 text-2xl font-bold">{w.balance.toLocaleString("en-US")}</div>
+                <div className="text-xs text-muted-foreground">محجوز: {w.reserved.toLocaleString("en-US")}</div>
               </div>
             ))}
             {wallets.length === 0 && <div className="col-span-3 text-center text-sm text-muted-foreground">لا توجد محافظ.</div>}
@@ -215,8 +215,8 @@ function UserDetail() {
                       <TableCell>{r.account}</TableCell>
                       <TableCell><Badge variant={r.direction === "credit" ? "default" : "destructive"}>{r.direction}</Badge></TableCell>
                       <TableCell>{r.reason}</TableCell>
-                      <TableCell className="font-mono">{r.amount.toLocaleString()}</TableCell>
-                      <TableCell className="font-mono">{r.balance_after.toLocaleString()}</TableCell>
+                      <TableCell className="font-mono">{r.amount.toLocaleString("en-US")}</TableCell>
+                      <TableCell className="font-mono">{r.balance_after.toLocaleString("en-US")}</TableCell>
                     </TableRow>
                   ))}
                   {(ledger.data?.length ?? 0) === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">لا توجد قيود.</TableCell></TableRow>}

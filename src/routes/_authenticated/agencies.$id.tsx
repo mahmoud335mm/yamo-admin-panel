@@ -93,7 +93,7 @@ function AgencyDetail() {
             <Badge variant="secondary">Lv {ag.level_id}</Badge>
             <Badge variant={ag.status === "active" ? "default" : "destructive"}>{ag.status}</Badge>
             <Badge variant="secondary">مضيفون: {ag.active_hosts}/{ag.total_hosts}</Badge>
-            <Badge variant="outline">عملات الشهر: {ag.monthly_coins.toLocaleString()}</Badge>
+            <Badge variant="outline">عملات الشهر: {ag.monthly_coins.toLocaleString("en-US")}</Badge>
           </CardDescription>
           <div className="mt-3 flex flex-wrap gap-2">
             {has("agencies.suspend") && ag.status === "active" && (
@@ -132,7 +132,7 @@ function AgencyDetail() {
                     <TableCell><Badge variant={h.status === "active" ? "default" : "secondary"}>{h.status}</Badge></TableCell>
                     <TableCell>H{h.level_id}</TableCell>
                     <TableCell className="font-mono">{h.monthly_hours}</TableCell>
-                    <TableCell className="font-mono">{h.monthly_coins.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono">{h.monthly_coins.toLocaleString("en-US")}</TableCell>
                     <TableCell className="text-xs text-muted-foreground">{new Date(h.joined_at).toLocaleDateString("ar-EG-u-nu-latn")}</TableCell>
                   </TableRow>
                 ))}</TableBody>

@@ -1,14 +1,15 @@
-const latinArabicLocale = "ar-EG-u-nu-latn";
+export const LATIN_ARABIC_LOCALE = "ar-EG-u-nu-latn";
+export const LATIN_NUMBER_LOCALE = "en-US";
 
-export const numberFormatter = new Intl.NumberFormat("en-US", {
+export const numberFormatter = new Intl.NumberFormat(LATIN_NUMBER_LOCALE, {
   maximumFractionDigits: 2,
 });
 
-export const integerFormatter = new Intl.NumberFormat("en-US", {
+export const integerFormatter = new Intl.NumberFormat(LATIN_NUMBER_LOCALE, {
   maximumFractionDigits: 0,
 });
 
-export const compactNumberFormatter = new Intl.NumberFormat("en-US", {
+export const compactNumberFormatter = new Intl.NumberFormat(LATIN_NUMBER_LOCALE, {
   notation: "compact",
   maximumFractionDigits: 1,
 });
@@ -28,7 +29,7 @@ export function formatDateTime(value: unknown) {
   if (!value) return "—";
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
-  return new Intl.DateTimeFormat(latinArabicLocale, {
+  return new Intl.DateTimeFormat(LATIN_ARABIC_LOCALE, {
     year: "numeric",
     month: "short",
     day: "2-digit",

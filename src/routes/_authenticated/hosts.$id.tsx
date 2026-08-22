@@ -117,11 +117,11 @@ function HostDetail() {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
             <Stat label="ساعات الشهر" value={String(host.monthly_hours)} />
-            <Stat label="عملات الشهر" value={host.monthly_coins.toLocaleString()} />
-            <Stat label="أرباح معلّقة" value={host.pending_earnings.toLocaleString()} />
-            <Stat label="الدين" value={host.debt.toLocaleString()} highlight={host.debt > 0} />
+            <Stat label="عملات الشهر" value={host.monthly_coins.toLocaleString("en-US")} />
+            <Stat label="أرباح معلّقة" value={host.pending_earnings.toLocaleString("en-US")} />
+            <Stat label="الدين" value={host.debt.toLocaleString("en-US")} highlight={host.debt > 0} />
             <Stat label="إجمالي الساعات" value={String(host.total_hours)} />
-            <Stat label="إجمالي العملات" value={host.total_coins.toLocaleString()} />
+            <Stat label="إجمالي العملات" value={host.total_coins.toLocaleString("en-US")} />
             <Stat label="الانضمام" value={new Date(host.joined_at).toLocaleDateString("ar-EG-u-nu-latn")} />
             <Stat label="المستوى" value={profile.data ? `Lv ${profile.data.level} / VIP ${profile.data.vip_level}` : "—"} />
           </div>
@@ -155,11 +155,11 @@ function HostDetail() {
                 <TableBody>{earnings.data!.map((e) => (
                   <TableRow key={e.id}>
                     <TableCell>{e.period_year}/{String(e.period_month).padStart(2, "0")}</TableCell>
-                    <TableCell className="font-mono">{e.gross_coins.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">{e.agency_cut.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">{e.bd_cut.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">{e.platform_cut.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono font-bold">{e.net_coins.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono">{e.gross_coins.toLocaleString("en-US")}</TableCell>
+                    <TableCell className="font-mono">{e.agency_cut.toLocaleString("en-US")}</TableCell>
+                    <TableCell className="font-mono">{e.bd_cut.toLocaleString("en-US")}</TableCell>
+                    <TableCell className="font-mono">{e.platform_cut.toLocaleString("en-US")}</TableCell>
+                    <TableCell className="font-mono font-bold">{e.net_coins.toLocaleString("en-US")}</TableCell>
                     <TableCell><Badge variant={e.status === "paid" ? "default" : "secondary"}>{e.status}</Badge></TableCell>
                   </TableRow>
                 ))}</TableBody></Table>
@@ -176,8 +176,8 @@ function HostDetail() {
                     <TableCell>{t.period_year}/{String(t.period_month).padStart(2, "0")}</TableCell>
                     <TableCell className="font-mono">{t.target_hours}</TableCell>
                     <TableCell className="font-mono">{t.achieved_hours} ({Math.round((Number(t.achieved_hours) / Math.max(Number(t.target_hours), 1)) * 100)}%)</TableCell>
-                    <TableCell className="font-mono">{t.target_coins.toLocaleString()}</TableCell>
-                    <TableCell className="font-mono">{t.achieved_coins.toLocaleString()} ({Math.round((Number(t.achieved_coins) / Math.max(Number(t.target_coins), 1)) * 100)}%)</TableCell>
+                    <TableCell className="font-mono">{t.target_coins.toLocaleString("en-US")}</TableCell>
+                    <TableCell className="font-mono">{t.achieved_coins.toLocaleString("en-US")} ({Math.round((Number(t.achieved_coins) / Math.max(Number(t.target_coins), 1)) * 100)}%)</TableCell>
                     <TableCell><Badge>{t.status}</Badge></TableCell>
                   </TableRow>
                 ))}</TableBody></Table>
