@@ -38,10 +38,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { yamoRows, yamoRpc } from "@/lib/yamo-admin";
 import {
+  advancedVideoProcessorConfigured,
   formatBytes,
   prepareMediaAsset,
   publicFileName,
   removeUploadedMedia,
+  startAdvancedEntryVideoProcessing,
+  setAdvancedVideoProcessorUrl,
+  advancedVideoProcessorUrl,
   uploadPreparedMedia,
   type MediaAssetKind,
 } from "@/lib/media-assets";
@@ -113,7 +117,7 @@ function InventoryCenter() {
   const assetsQ = useQuery({
     queryKey: ["admin_media_assets"],
     queryFn: () => yamoRows("admin_media_assets", 800) as Promise<AssetRow[]>,
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
   });
   const rulesQ = useQuery({
     queryKey: ["admin_asset_reward_rules"],
@@ -158,6 +162,9 @@ function InventoryCenter() {
               <Badge variant="outline" className="gap-1 rounded-full border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> متصل بالسيرفر
               </Badge>
+              <Badge variant="outline" className={`gap-1 rounded-full ${advancedVideoProcessorConfigured() ? "border-cyan-500/30 bg-cyan-500/10 text-cyan-300" : "border-amber-500/30 bg-amber-500/10 text-amber-300"}`}>
+                <WandSparkles className="h-3 w-3" /> {advancedVideoProcessorConfigured() ? "معالج الفيديو AI جاهز" : "معالج الفيديو يحتاج ربط"}
+              </Badge>
             </div>
             <h1 className="text-2xl font-black tracking-tight md:text-4xl">المقتنيات والمؤثرات</h1>
             <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground">
@@ -167,6 +174,15 @@ function InventoryCenter() {
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" className="rounded-xl" onClick={refreshAll}>
               <RefreshCw className="ml-2 h-4 w-4" /> تحديث الكتالوج
+            </Button>
+            <Button variant="outline" className="rounded-xl" onClick={() => {
+              const next = window.prompt("رابط معالج فيديو Yamo (HTTPS)", advancedVideoProcessorUrl());
+              if (next === null) return;
+              setAdvancedVideoProcessorUrl(next);
+              toast.success(next.trim() ? "تم حفظ رابط معالج الفيديو" : "تم مسح رابط معالج الفيديو");
+              window.location.reload();
+            }}>
+              <WandSparkles className="ml-2 h-4 w-4" /> إعداد معالج الفيديو
             </Button>
             <Button className="rounded-xl bg-gradient-to-l from-violet-600 to-orange-500 font-bold" onClick={() => setAssetDialog({ open: true, initialKind: mainTab === "backgrounds" ? "room_background" : "entry_effect" })}>
               <Plus className="ml-2 h-4 w-4" /> رفع عنصر جديد
@@ -470,11 +486,24 @@ function AssetEditorInner(props: {
       if (!name.trim()) throw new Error("اكتب اسم العنصر");
       if (!editing && !file) throw new Error("اختر ملف العنصر أولًا");
       let uploaded: Awaited<ReturnType<typeof uploadPreparedMedia>> | null = null;
+      let saved = false;
+      let code = asset?.asset_key ?? "";
+      const advancedVideo = Boolean(file && kind === "entry_effect" && file.type.startsWith("video/") && removeBg);
+      const processorReady = advancedVideoProcessorConfigured();
       try {
         if (file) {
-          setBusyText("تحليل الملف وإنشاء الصورة المصغرة…");
-          const prepared = await prepareMediaAsset(file, kind, removeBg, thumbnail);
-          setBusyText("رفع الأصل والنسخة الجاهزة…");
+          setBusyText(advancedVideo ? "قص الدخلة وتجهيز الأصل للمعالج الذكي…" : "تحليل الفيديو والقص التلقائي وإنشاء الصورة المصغرة…");
+          // فيديو الدخلة الذي يحتاج إزالة خلفية يمر أولاً بمرحلة آمنة محلية
+          // (قص/صوت/Thumbnail) ثم يُرسل للمعالج الحقيقي على السيرفر.
+          const prepared = await prepareMediaAsset(file, kind, advancedVideo ? false : removeBg, thumbnail, audio);
+          if (advancedVideo) {
+            prepared.processingStatus = processorReady ? "processing" : "needs_processor";
+            prepared.processingError = processorReady
+              ? "جاري إزالة الخلفية Frame-by-Frame وتحسين الحواف على معالج Yamo."
+              : "تم تجهيز الملف، لكن رابط معالج الفيديو غير مضبوط بعد.";
+            prepared.metadata = { ...prepared.metadata, advanced_background_removal: true, processor_required: true };
+          }
+          setBusyText("رفع الأصل وملفات المعاينة…");
           uploaded = await uploadPreparedMedia(prepared, kind);
         }
         const priorMeta = parseMetadata(asset?.metadata);
@@ -484,7 +513,7 @@ function AssetEditorInner(props: {
           duration_days: days.trim() ? Math.max(1, Number(days)) : "",
           quality,
           sort_order: Number(sortOrder || 0),
-          enabled,
+          enabled: advancedVideo ? false : enabled,
           audio_enabled: kind === "entry_effect" ? audio : false,
           remove_background: kind === "room_background" ? false : removeBg,
         };
@@ -501,25 +530,68 @@ function AssetEditorInner(props: {
           height: uploaded.height,
           duration_ms: uploaded.durationMs ?? "",
           file_size_bytes: uploaded.processed.size,
-          metadata: { ...priorMeta, ...uploaded.metadata, storage_paths: uploaded.storagePaths },
+          metadata: {
+            ...priorMeta,
+            ...uploaded.metadata,
+            storage_paths: uploaded.storagePaths,
+            enabled_after_processing: enabled,
+          },
         });
         setBusyText(editing ? "حفظ التعديلات…" : "إنشاء الكود التلقائي وحفظ العنصر…");
         if (editing && asset) {
           await yamoRpc("admin_update_yamo_media_asset", { p_asset_kind: asset.asset_kind, p_asset_key: asset.asset_key, p_payload: payload });
-          if (uploaded) {
-            const oldPaths = readStoragePaths(asset.metadata);
-            if (oldPaths.length) await removeUploadedMedia(oldPaths).catch(() => undefined);
-          }
-          return asset.asset_key;
+          code = asset.asset_key;
+          saved = true;
+        } else {
+          const result = await yamoRpc<{ asset_key?: string }>("admin_create_yamo_media_asset", { p_asset_kind: kind, p_payload: payload });
+          code = String(result?.asset_key ?? "");
+          saved = true;
         }
-        const result = await yamoRpc<{ asset_key?: string }>("admin_create_yamo_media_asset", { p_asset_kind: kind, p_payload: payload });
-        return String(result?.asset_key ?? "");
+
+        if (advancedVideo && uploaded && processorReady) {
+          setBusyText("إرسال الدخلة لمعالج إزالة الخلفية الحقيقي…");
+          try {
+            await startAdvancedEntryVideoProcessing({
+              assetKey: code,
+              sourceUrl: uploaded.mediaUrl,
+              originalUrl: uploaded.originalUrl,
+              thumbnailUrl: uploaded.thumbnailUrl,
+              audioEnabled: audio,
+              enabledAfterProcessing: enabled,
+              quality,
+              storagePaths: uploaded.storagePaths,
+              maxDurationMs: 20_000,
+            });
+          } catch (processorError) {
+            await yamoRpc("admin_update_yamo_media_asset", {
+              p_asset_kind: "entry_effect",
+              p_asset_key: code,
+              p_payload: {
+                processing_status: "failed",
+                processing_error: errorMessage(processorError),
+                enabled: false,
+              },
+            }).catch(() => undefined);
+            throw processorError;
+          }
+        }
+
+        if (editing && uploaded && !advancedVideo) {
+          const oldPaths = readStoragePaths(asset?.metadata);
+          if (oldPaths.length) await removeUploadedMedia(oldPaths).catch(() => undefined);
+        }
+        return { code, advancedVideo, processorReady };
       } catch (error) {
-        if (uploaded?.storagePaths?.length) await removeUploadedMedia(uploaded.storagePaths).catch(() => undefined);
+        if (!saved && uploaded?.storagePaths?.length) await removeUploadedMedia(uploaded.storagePaths).catch(() => undefined);
         throw error;
       } finally { setBusyText(""); }
     },
-    onSuccess: (code) => { toast.success(editing ? "تم حفظ التعديلات" : `تمت إضافة العنصر بالكود ${code}`); onSaved(); },
+    onSuccess: ({ code, advancedVideo, processorReady }) => {
+      if (advancedVideo && processorReady) toast.success(`تم رفع ${code} وبدأت إزالة الخلفية تلقائيًا. سيظهر «جاهز» بعد انتهاء المعالجة.`);
+      else if (advancedVideo) toast.warning(`تم حفظ ${code} لكنه ينتظر ربط معالج الفيديو.`);
+      else toast.success(editing ? "تم حفظ التعديلات" : `تمت إضافة العنصر بالكود ${code}`);
+      onSaved();
+    },
     onError: (error) => toast.error(errorMessage(error)),
   });
 
@@ -557,11 +629,11 @@ function AssetEditorInner(props: {
               <Field label="ترتيب الظهور"><Input type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} className="rounded-xl" /></Field>
             </div>
 
-            <UploadBox title={editing ? "استبدال ملف العنصر (اختياري)" : "ملف العنصر"} description={kind === "frame" ? "PNG / WebP / JPG — ستُحافظ المعالجة على الشفافية." : kind === "entry_effect" ? "MP4 / WebM أو صورة — الدخلة حتى 5 ثوانٍ." : "صورة أو MP4/WebM — الفيديو حتى 20 ثانية ويعمل Loop داخل التطبيق."} file={file} onChange={setFile} accept={kind === "frame" ? "image/png,image/webp,image/jpeg" : "image/*,video/mp4,video/webm,video/quicktime"} />
+            <UploadBox title={editing ? "استبدال ملف العنصر (اختياري)" : "ملف العنصر"} description={kind === "frame" ? "PNG / WebP / JPG — ستُحافظ المعالجة على الشفافية." : kind === "entry_effect" ? "MP4 / WebM أو صورة — الدخلة حتى 20 ثانية، والأطول يُقص تلقائيًا إلى 20 ثانية." : "صورة أو MP4/WebM — الخلفية المتحركة حتى 5 ثوانٍ، والأطول يُقص تلقائيًا إلى 5 ثوانٍ ثم يعمل Loop."} file={file} onChange={setFile} accept={kind === "frame" ? "image/png,image/webp,image/jpeg" : "image/*,video/mp4,video/webm,video/quicktime"} />
             <UploadBox title="صورة مصغرة مخصصة — اختياري" description="لو سيبتها فارغة، اللوحة تنشئ Thumbnail تلقائيًا من الصورة أو لقطة من الفيديو." file={thumbnail} onChange={setThumbnail} accept="image/*" compact />
 
             <div className="grid gap-3 sm:grid-cols-2">
-              {kind !== "room_background" && <ToggleCard icon={WandSparkles} title="تنظيف الخلفية والحواف" description={kind === "frame" ? "ينظف الخلفية المتصلة بالحواف ويحافظ على الرسم الداخلي." : "للصور يتم فورًا؛ فيديو الدخلة يُحجز للمعالج المتقدم قبل النشر."} checked={removeBg} onCheckedChange={setRemoveBg} />}
+              {kind !== "room_background" && <ToggleCard icon={WandSparkles} title="تنظيف الخلفية والحواف" description={kind === "frame" ? "ينظف الخلفية المتصلة بالحواف ويحافظ على الرسم الداخلي." : "لفيديو الدخلة: إزالة خلفية AI حقيقية Frame-by-Frame + تنعيم حواف ثم نشر تلقائي عند النجاح."} checked={removeBg} onCheckedChange={setRemoveBg} />}
               {kind === "entry_effect" && <ToggleCard icon={audio ? Volume2 : VolumeX} title="تشغيل صوت الدخلة" description="لو مقفول، التطبيق يعرض الدخلة بدون صوت." checked={audio} onCheckedChange={setAudio} />}
               <ToggleCard icon={ShieldCheck} title="متاح للمستخدمين" description="لن يصبح متاحًا فعليًا إلا بعد حالة «جاهز»." checked={enabled} onCheckedChange={setEnabled} />
             </div>
@@ -573,7 +645,7 @@ function AssetEditorInner(props: {
               <Badge className="absolute left-3 top-3 rounded-full bg-black/55 text-white">{kindLabel[kind]}</Badge>
             </div>
             <div className="rounded-2xl border border-violet-500/15 bg-violet-500/5 p-3 text-xs leading-6 text-muted-foreground">
-              <strong className="text-foreground">المعالجة الآمنة:</strong> الصور والإطارات يتم ضغطها وتنظيف الحواف داخل المتصفح. الفيديو يُفحص للمدة والمقاس وتُنشأ له صورة مصغرة تلقائيًا؛ ولو طلبت إزالة خلفية فيديو لن يُنشر قبل اكتمال معالج الفيديو.
+              <strong className="text-foreground">المعالجة الآمنة:</strong> الدخلة تُقص تلقائيًا عند 20 ثانية، ثم عند تفعيل تنظيف الخلفية تُرسل لمعالج Yamo الحقيقي لإزالة الخلفية Frame-by-Frame وتنعيم الحواف وإخراج نسخة شفافة. خلفية الروم تُقص عند 5 ثوانٍ وتُجهز للـLoop، والصورة المصغرة تتولد تلقائيًا.
             </div>
           </div>
         </div>
@@ -618,7 +690,9 @@ function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onCl
 
 function PreviewDialog({ asset, onClose }: { asset: AssetRow | null; onClose: () => void }) {
   const url = String(asset?.media_url || asset?.preview_url || "");
-  return <Dialog open={Boolean(asset)} onOpenChange={(v) => !v && onClose()}><DialogContent dir="rtl" className="max-w-3xl"><DialogHeader><DialogTitle>{asset?.name_ar ?? asset?.asset_key}</DialogTitle><DialogDescription><span dir="ltr">{asset?.asset_key}</span> — {asset ? kindLabel[asset.asset_kind] : ""}</DialogDescription></DialogHeader><div className="grid min-h-96 place-items-center overflow-hidden rounded-3xl border bg-gradient-to-br from-violet-950/60 to-orange-950/25 p-4">{url ? asset?.media_type === "video" ? <video src={url} controls autoPlay loop muted={!asset.audio_enabled} className="max-h-[65vh] max-w-full object-contain" /> : <img src={url} alt="معاينة" className="max-h-[65vh] max-w-full object-contain" /> : <div className="text-muted-foreground">لا توجد معاينة</div>}</div></DialogContent></Dialog>;
+  const meta = parseMetadata(asset?.metadata);
+  const audioUrl = typeof meta.audio_url === "string" ? meta.audio_url : "";
+  return <Dialog open={Boolean(asset)} onOpenChange={(v) => !v && onClose()}><DialogContent dir="rtl" className="max-w-3xl"><DialogHeader><DialogTitle>{asset?.name_ar ?? asset?.asset_key}</DialogTitle><DialogDescription><span dir="ltr">{asset?.asset_key}</span> — {asset ? kindLabel[asset.asset_kind] : ""}</DialogDescription></DialogHeader><div className="grid min-h-96 place-items-center overflow-hidden rounded-3xl border bg-[linear-gradient(45deg,#111827_25%,#1f2937_25%,#1f2937_50%,#111827_50%,#111827_75%,#1f2937_75%)] bg-[length:28px_28px] p-4">{url ? asset?.media_type === "video" ? <video src={url} controls autoPlay loop muted={!asset.audio_enabled} className="max-h-[65vh] max-w-full object-contain" /> : <img src={url} alt="معاينة" className="max-h-[65vh] max-w-full object-contain" /> : <div className="text-muted-foreground">لا توجد معاينة</div>}</div>{audioUrl && asset?.audio_enabled && <audio src={audioUrl} controls className="mt-3 w-full" />}</DialogContent></Dialog>;
 }
 
 function RewardsPanel({ rules, queue, loading, assets, onAdd, onEdit, onRefresh }: { rules: RewardRule[]; queue: Record<string, unknown>[]; loading: boolean; assets: AssetRow[]; onAdd: () => void; onEdit: (r: RewardRule) => void; onRefresh: () => void }) {

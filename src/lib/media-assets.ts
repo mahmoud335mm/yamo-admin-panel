@@ -226,6 +226,110 @@ async function readVideoMetadata(file: File) {
   }
 }
 
+
+
+type CapturableVideo = HTMLVideoElement & {
+  captureStream?: () => MediaStream;
+  mozCaptureStream?: () => MediaStream;
+};
+
+function chooseRecorderMimeType(includeAudio: boolean) {
+  const candidates = includeAudio
+    ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"]
+    : ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"];
+  return candidates.find((type) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(type)) ?? "video/webm";
+}
+
+async function trimVideoClip(
+  file: File,
+  maxDurationMs: number,
+  includeAudio: boolean,
+): Promise<{ blob: Blob; durationMs: number; mimeType: string }> {
+  if (typeof MediaRecorder === "undefined") {
+    throw new Error("المتصفح الحالي لا يدعم القص التلقائي للفيديو. افتح لوحة التحكم بآخر إصدار من Chrome أو Edge");
+  }
+
+  const url = URL.createObjectURL(file);
+  const video = document.createElement("video") as CapturableVideo;
+  video.preload = "auto";
+  video.playsInline = true;
+  video.src = url;
+  // Keep processing silent and autoplay-safe. In Chromium captureStream keeps
+  // the selected source audio track available to MediaRecorder even while the
+  // local media element itself is muted.
+  video.muted = true;
+  video.volume = 0;
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      video.onloadedmetadata = () => resolve();
+      video.onerror = () => reject(new Error("تعذر قراءة الفيديو للقص التلقائي"));
+    });
+    if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error("مدة الفيديو غير صالحة");
+
+    const capture = video.captureStream ?? video.mozCaptureStream;
+    if (!capture) throw new Error("المتصفح الحالي لا يدعم القص التلقائي للفيديو. استخدم Chrome أو Edge");
+
+    video.currentTime = 0;
+    await new Promise<void>((resolve, reject) => {
+      if (video.readyState >= 2) return resolve();
+      video.oncanplay = () => resolve();
+      video.onerror = () => reject(new Error("تعذر تجهيز الفيديو للقص التلقائي"));
+    });
+
+    const sourceStream = capture.call(video);
+    if (!includeAudio) {
+      sourceStream.getAudioTracks().forEach((track) => {
+        sourceStream.removeTrack(track);
+        track.stop();
+      });
+    }
+
+    const mimeType = chooseRecorderMimeType(includeAudio);
+    const chunks: BlobPart[] = [];
+    const recorder = new MediaRecorder(sourceStream, {
+      mimeType,
+      videoBitsPerSecond: 5_000_000,
+      ...(includeAudio ? { audioBitsPerSecond: 128_000 } : {}),
+    });
+
+    const done = new Promise<Blob>((resolve, reject) => {
+      recorder.ondataavailable = (event) => { if (event.data.size > 0) chunks.push(event.data); };
+      recorder.onerror = () => reject(new Error("فشل القص التلقائي للفيديو"));
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: recorder.mimeType || mimeType });
+        if (!blob.size) reject(new Error("النسخة المقصوصة من الفيديو فارغة"));
+        else resolve(blob);
+      };
+    });
+
+    recorder.start(250);
+    await video.play();
+    const durationToKeep = Math.min(maxDurationMs, Math.round(video.duration * 1000));
+    await new Promise<void>((resolve) => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        video.pause();
+        if (recorder.state !== "inactive") recorder.stop();
+        resolve();
+      };
+      const timer = window.setTimeout(finish, durationToKeep + 120);
+      video.onended = () => { window.clearTimeout(timer); finish(); };
+    });
+
+    const blob = await done;
+    sourceStream.getTracks().forEach((track) => track.stop());
+    return { blob, durationMs: durationToKeep, mimeType: blob.type || mimeType };
+  } finally {
+    video.pause();
+    video.removeAttribute("src");
+    video.load();
+    URL.revokeObjectURL(url);
+  }
+}
+
 async function makeVideoThumbnail(file: File) {
   const url = URL.createObjectURL(file);
   try {
@@ -267,6 +371,7 @@ export async function prepareMediaAsset(
   kind: MediaAssetKind,
   removeBackground: boolean,
   customThumbnail?: File | null,
+  audioEnabled = false,
 ): Promise<PreparedMedia> {
   if (file.size <= 0) throw new Error("الملف فارغ");
   if (file.size > MAX_UPLOAD_BYTES) throw new Error("حجم الملف أكبر من 50 MB");
@@ -277,26 +382,53 @@ export async function prepareMediaAsset(
 
   if (isVideo) {
     const meta = await readVideoMetadata(file);
-    const seconds = meta.durationMs / 1000;
-    if (kind === "entry_effect" && seconds > 5.5) throw new Error("الدخلة أطول من 5 ثوانٍ. قصّرها قبل الاعتماد");
-    if (kind === "room_background" && seconds > 20) throw new Error("فيديو الخلفية أطول من 20 ثانية؛ استخدم Loop أقصر وأخف");
-    const thumbnail = customThumbnail ? (await imageToWebp(customThumbnail, 720, 0.9)).blob : await makeVideoThumbnail(file);
+    const maxDurationMs = kind === "entry_effect" ? 20_000 : kind === "room_background" ? 5_000 : meta.durationMs;
+    const shouldTrim = meta.durationMs > maxDurationMs + 150;
+    const shouldTranscode = shouldTrim || kind === "room_background" || (kind === "entry_effect" && !audioEnabled);
+    let processed: Blob | File = file;
+    let processedDurationMs = meta.durationMs;
+    let processedMimeType = file.type || "video/mp4";
+
+    if (shouldTranscode) {
+      const trimmed = await trimVideoClip(file, maxDurationMs, kind === "entry_effect" && audioEnabled);
+      processed = trimmed.blob;
+      processedDurationMs = trimmed.durationMs;
+      processedMimeType = trimmed.mimeType;
+    }
+
+    const processedFile = processed instanceof File
+      ? processed
+      : blobToFile(processed, `media.${extensionForMime(processedMimeType)}`);
+    const thumbnail = customThumbnail
+      ? (await imageToWebp(customThumbnail, 720, 0.9)).blob
+      : await makeVideoThumbnail(processedFile);
     const needsProcessor = kind === "entry_effect" && removeBackground;
     return {
       original: file,
-      processed: file,
-      processedName: `media.${extensionForMime(file.type)}`,
+      processed,
+      processedName: `media.${extensionForMime(processedMimeType)}`,
       thumbnail,
       width: meta.width,
       height: meta.height,
-      durationMs: meta.durationMs,
+      durationMs: processedDurationMs,
       mediaType: "video",
-      mimeType: file.type || "video/mp4",
+      mimeType: processedMimeType,
       processingStatus: needsProcessor ? "needs_processor" : "ready",
       processingError: needsProcessor
-        ? "إزالة خلفية الفيديو تحتاج عامل معالجة الفيديو؛ تم حفظ الأصل والمعاينة ولن يُنشر العنصر قبل اكتمال المعالجة."
+        ? "تم القص التلقائي عند الحاجة، لكن إزالة خلفية فيديو الدخلة تحتاج معالج الفيديو المتقدم قبل النشر."
         : null,
-      metadata: { validated_in_browser: true, original_name: file.name },
+      metadata: {
+        validated_in_browser: true,
+        original_name: file.name,
+        original_duration_ms: meta.durationMs,
+        max_duration_ms: maxDurationMs,
+        auto_trimmed: shouldTrim,
+        auto_transcoded: shouldTranscode,
+        trimmed_duration_ms: shouldTrim ? processedDurationMs : null,
+        room_loop: kind === "room_background",
+        audio_requested: kind === "entry_effect" && audioEnabled,
+        audio_removed_automatically: kind === "room_background" || (kind === "entry_effect" && !audioEnabled),
+      },
     };
   }
 
@@ -380,4 +512,70 @@ export function formatBytes(value: number | null | undefined) {
 
 export function publicFileName(file: File | null) {
   return file ? sanitizeName(file.name) : "لم يتم اختيار ملف";
+}
+
+
+export type AdvancedProcessorJob = {
+  accepted: boolean;
+  jobId?: string;
+  status?: string;
+  message?: string;
+};
+
+export function advancedVideoProcessorUrl() {
+  const saved = typeof window !== "undefined" ? window.localStorage.getItem("yamo_media_processor_url") : null;
+  return String(saved || import.meta.env.VITE_YAMO_MEDIA_PROCESSOR_URL || "").trim().replace(/\/+$/, "");
+}
+
+export function setAdvancedVideoProcessorUrl(value: string) {
+  if (typeof window === "undefined") return;
+  const clean = value.trim().replace(/\/+$/, "");
+  if (clean) window.localStorage.setItem("yamo_media_processor_url", clean);
+  else window.localStorage.removeItem("yamo_media_processor_url");
+}
+
+export function advancedVideoProcessorConfigured() {
+  return advancedVideoProcessorUrl().length > 0;
+}
+
+export async function startAdvancedEntryVideoProcessing(input: {
+  assetKey: string;
+  sourceUrl: string;
+  originalUrl: string;
+  thumbnailUrl?: string | null;
+  audioEnabled: boolean;
+  enabledAfterProcessing: boolean;
+  quality: string;
+  storagePaths: string[];
+  maxDurationMs?: number;
+}) {
+  const baseUrl = advancedVideoProcessorUrl();
+  if (!baseUrl) throw new Error("معالج فيديو الدخلات غير مربوط بعد. أضف VITE_YAMO_MEDIA_PROCESSOR_URL ثم أعد النشر.");
+  const { data: { session }, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const token = session?.access_token;
+  if (!token) throw new Error("انتهت جلسة لوحة التحكم. سجّل الدخول مرة أخرى.");
+
+  const response = await fetch(`${baseUrl}/v1/process-entry`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      asset_key: input.assetKey,
+      source_url: input.sourceUrl,
+      original_url: input.originalUrl,
+      thumbnail_url: input.thumbnailUrl ?? null,
+      audio_enabled: input.audioEnabled,
+      enabled_after_processing: input.enabledAfterProcessing,
+      quality: input.quality,
+      storage_paths: input.storagePaths,
+      max_duration_ms: Math.min(Math.max(input.maxDurationMs ?? 20_000, 1_000), 20_000),
+    }),
+  });
+  const payload = await response.json().catch(() => ({})) as AdvancedProcessorJob & { detail?: string };
+  if (!response.ok) throw new Error(payload.detail || payload.message || `فشل تشغيل معالج الفيديو (${response.status})`);
+  if (!payload.accepted) throw new Error(payload.message || "معالج الفيديو لم يقبل المهمة");
+  return payload;
 }
