@@ -886,7 +886,6 @@ function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onCl
   const [userId, setUserId] = useState("");
   const [selectedUser, setSelectedUser] = useState<YamoAdminUserLookup | null>(null);
   const [days, setDays] = useState("");
-  const [equipNow, setEquipNow] = useState(true);
   const [reason, setReason] = useState("منح من لوحة التحكم");
   const lookupTerm = userId.trim();
   const lookupQ = useQuery({
@@ -900,7 +899,6 @@ function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onCl
     setUserId("");
     setSelectedUser(null);
     setDays("");
-    setEquipNow(true);
     setReason("منح من لوحة التحكم");
     onClose();
   };
@@ -911,7 +909,7 @@ function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onCl
   };
 
   const mutation = useMutation({
-    mutationFn: () => yamoRpc("admin_grant_user_asset_v2", { p_legacy_id: selectedUser?.legacy_id, p_asset_kind: asset?.asset_kind, p_asset_key: asset?.asset_key, p_days: days.trim() ? Number(days) : null, p_equip: equipNow, p_reason: reason.trim() || null }),
+    mutationFn: () => yamoRpc("admin_grant_user_asset_v2", { p_legacy_id: selectedUser?.legacy_id, p_asset_kind: asset?.asset_kind, p_asset_key: asset?.asset_key, p_days: days.trim() ? Number(days) : null, p_equip: false, p_reason: reason.trim() || null }),
     onSuccess: () => { toast.success(`تم إرسال المقتنى إلى ${selectedUser?.display_name || selectedUser?.legacy_id || "المستخدم"}`); onSaved(); resetAndClose(); },
     onError: (e) => toast.error(errorMessage(e)),
   });
@@ -952,13 +950,7 @@ function GrantDialog({ asset, onClose, onSaved }: { asset: AssetRow | null; onCl
             )}
           </Field>
           <DurationDaysPicker label="مدة المنح" value={days} onChange={setDays} />
-          <ToggleCard
-            icon={BadgeCheck}
-            title="تفعيل للمستخدم فورًا"
-            description="عند التفعيل تصبح الدخلة/الإطار/الخلفية هي المستخدمة مباشرة في التطبيق. عند الإغلاق تصل للحقيبة فقط ويختارها المستخدم بنفسه."
-            checked={equipNow}
-            onCheckedChange={setEquipNow}
-          />
+          <div className="rounded-2xl border border-violet-500/20 bg-violet-500/5 p-3 text-xs leading-6 text-muted-foreground">سيصل المقتنى إلى حقيبة المستخدم فقط. المستخدم هو الذي يضغط «استخدم» لتفعيله.</div>
           <Field label="سبب المنح"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} className="rounded-xl" /></Field>
         </div>
         <DialogFooter className="gap-2 sm:justify-start">
