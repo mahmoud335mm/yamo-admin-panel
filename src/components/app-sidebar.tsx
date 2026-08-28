@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Sparkles, ChevronLeft } from "lucide-react";
+import { useAdminLanguage } from "@/lib/admin-language";
 
 function isChildActive(pathname: string, to: string) {
   return pathname === to || pathname.startsWith(to + "/");
@@ -18,6 +19,8 @@ export function AppSidebar() {
   const collapsed = state === "collapsed";
   const pathname = useRouterState({ select: (r) => r.location.pathname });
   const { has } = usePermissions();
+  const language = useAdminLanguage();
+  const label = (item: NavItem) => language === "ar" ? item.labelAr : item.labelEn;
 
   const renderItem = (item: NavItem) => {
     const allowed = !item.permission || has(item.permission);
@@ -34,11 +37,11 @@ export function AppSidebar() {
         <Collapsible key={item.to} defaultOpen={anyActive} className="group/collapsible">
           <SidebarMenuItem>
             <CollapsibleTrigger asChild>
-              <SidebarMenuButton isActive={anyActive} tooltip={item.labelAr}>
+              <SidebarMenuButton isActive={anyActive} tooltip={label(item)}>
                 <Icon className="h-4 w-4 shrink-0" />
                 {!collapsed && (
                   <>
-                    <span className="flex-1 text-right">{item.labelAr}</span>
+                    <span className="flex-1 text-start">{label(item)}</span>
                     <ChevronLeft className="h-3 w-3 transition-transform group-data-[state=open]/collapsible:-rotate-90" />
                   </>
                 )}
@@ -55,7 +58,7 @@ export function AppSidebar() {
                         <SidebarMenuSubButton asChild isActive={active}>
                           <Link to={child.to} className="flex items-center gap-2">
                             <ChildIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                            <span>{child.labelAr}</span>
+                            <span>{language === "ar" ? child.labelAr : child.labelEn}</span>
                           </Link>
                         </SidebarMenuSubButton>
                       </SidebarMenuSubItem>
@@ -74,10 +77,10 @@ export function AppSidebar() {
     const Icon = item.icon;
     return (
       <SidebarMenuItem key={item.to}>
-        <SidebarMenuButton asChild isActive={active} tooltip={item.labelAr}>
+        <SidebarMenuButton asChild isActive={active} tooltip={label(item)}>
           <Link to={item.to} className="flex items-center gap-2">
             <Icon className="h-4 w-4 shrink-0" />
-            {!collapsed && <span>{item.labelAr}</span>}
+            {!collapsed && <span>{label(item)}</span>}
           </Link>
         </SidebarMenuButton>
       </SidebarMenuItem>
@@ -93,7 +96,7 @@ export function AppSidebar() {
           </div>
           {!collapsed && (
             <div className="flex flex-col leading-tight">
-              <span className="text-sm font-black">لوحة تحكم يامو</span>
+              <span className="text-sm font-black">{language === "ar" ? "لوحة تحكم يامو" : "Yamo Admin Console"}</span>
               <span className="text-[10px] tracking-[0.18em] text-muted-foreground">SMART CONSOLE</span>
             </div>
           )}
@@ -102,7 +105,7 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>القوائم</SidebarGroupLabel>
+          <SidebarGroupLabel>{language === "ar" ? "القوائم" : "Navigation"}</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>{navItems.map(renderItem)}</SidebarMenu>
           </SidebarGroupContent>

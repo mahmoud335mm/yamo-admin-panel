@@ -5,12 +5,14 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/s
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { LanguageToggle } from "@/components/language-toggle";
 import { UserMenu } from "@/components/user-menu";
 import { GlobalSearch } from "@/components/global-search";
 import { NotificationsMenu } from "@/components/notifications-menu";
 import { Breadcrumbs } from "@/components/breadcrumbs";
 import { Toaster } from "@/components/ui/sonner";
 import { getYamoAdminMe } from "@/lib/yamo-admin";
+import { useAdminLanguage } from "@/lib/admin-language";
 
 export const Route = createFileRoute("/_authenticated")({
   ssr: false,
@@ -30,7 +32,12 @@ export const Route = createFileRoute("/_authenticated")({
 
 function AuthenticatedLayout() {
   const navigate = useNavigate();
+  const language = useAdminLanguage();
   useEffect(() => {
+    const language = window.localStorage.getItem("yamo-admin-language") === "en" ? "en" : "ar";
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    document.body.dataset.adminLanguage = language;
     const { data: sub } = supabase.auth.onAuthStateChange((e, s) => {
       if (e === "SIGNED_OUT" || !s) navigate({ to: "/auth", replace: true });
     });
@@ -38,7 +45,7 @@ function AuthenticatedLayout() {
   }, [navigate]);
 
   return (
-    <div dir="rtl">
+    <div dir={language === "ar" ? "rtl" : "ltr"}>
       <SidebarProvider>
         <AppSidebar />
         <SidebarInset>
@@ -49,6 +56,7 @@ function AuthenticatedLayout() {
             <div className="mr-auto flex items-center gap-2">
               <GlobalSearch />
               <NotificationsMenu />
+              <LanguageToggle />
               <ThemeToggle />
               <UserMenu />
             </div>
