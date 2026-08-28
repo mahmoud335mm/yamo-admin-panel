@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { AlertTriangle, CheckCheck, Eye, FileAudio, Image as ImageIcon, Loader2, LockKeyhole, MessageSquareText, Search, ShieldCheck, UserRound } from "lucide-react";
+import { Activity, AlertTriangle, BarChart3, CheckCheck, Coins, Eye, FileAudio, Image as ImageIcon, Loader2, LockKeyhole, MessageCircle, MessageSquareText, Pencil, Phone, Save, Search, ShieldCheck, Sparkles, Star, UserRound, UsersRound, Video } from "lucide-react";
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { yamoRpc } from "@/lib/yamo-admin";
 import { formatDateTime, formatInteger } from "@/lib/format";
 
@@ -16,7 +20,7 @@ type Thread = { peer_legacy_id:string; peer_name:string; peer_avatar_url?:string
 type Message = { message_id:string; sender_legacy_id:string; sender_name:string; sender_avatar_url?:string|null; receiver_legacy_id:string; receiver_name:string; receiver_avatar_url?:string|null; body?:string|null; kind:string; media_url?:string|null; duration_seconds?:number|null; earning_pearls?:number|null; sent_at?:string|null; read_at?:string|null; deleted_at?:string|null; deleted_by_legacy_id?:string|null };
 type UserResult = { legacy_id:string; display_name:string; avatar_url?:string|null; gender?:string|null; message_count:number };
 
-export const Route = createFileRoute("/_authenticated/messages")({ component: MessagesArchive });
+export const Route = createFileRoute("/_authenticated/messages")({ component: MessagesManagement });
 
 function rows<T>(value:unknown):T[]{
   if(Array.isArray(value)) return value as T[];
@@ -29,7 +33,97 @@ function Avatar({url,name,size="md"}:{url?:string|null;name:string;size?:"sm"|"m
   return url?<img src={url} alt={`صورة ${name}`} className={`${dimensions} shrink-0 rounded-2xl object-cover ring-1 ring-border`}/>:<div className={`${dimensions} grid shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-violet-600 text-sm font-black text-white`}>{name.trim().charAt(0)||<UserRound className="h-4 w-4"/>}</div>;
 }
 
-function MessagesArchive(){
+type DashboardStats={total_messages:number;messages_today:number;active_users:number;active_males:number;active_females:number;response_rate:number;text_percent:number;image_percent:number;voice_percent:number;video_percent:number;coins_spent:number;earnings_paid:number;chart?:{label:string;sent:number;replies:number}[]};
+type MessageSettings={text_price:number;image_price:number;voice_message_price:number;voice_minute_price:number;video_minute_price:number;receiver_percent:number;system_percent:number;daily_free_messages:number;minimum_call_seconds:number;suggestions_per_day:number;online_only:boolean;prevent_repeat_days:number;pricing_enabled:boolean;suggestions_enabled:boolean};
+type ActiveConversation={user_a_id:string;user_a_name:string;user_a_avatar?:string|null;user_a_gender?:string|null;user_b_id:string;user_b_name:string;user_b_avatar?:string|null;user_b_gender?:string|null;message_count:number;duration_minutes:number;coins_spent:number;last_message_at?:string|null};
+type Suggestion={legacy_id:string;display_name:string;avatar_url?:string|null;gender?:string|null;age?:number|null;country?:string|null;level?:number|null;vip_level?:number|null;is_online?:boolean;message_count?:number};
+
+const defaultSettings:MessageSettings={text_price:10,image_price:20,voice_message_price:25,voice_minute_price:50,video_minute_price:80,receiver_percent:40,system_percent:60,daily_free_messages:0,minimum_call_seconds:60,suggestions_per_day:20,online_only:true,prevent_repeat_days:7,pricing_enabled:true,suggestions_enabled:true};
+const fallbackChart=["00","04","08","12","16","20","24"].map((label,index)=>({label,sent:[820,1050,2200,3400,3900,5100,4700][index],replies:[500,720,1500,2400,2700,3900,3500][index]}));
+
+function numberValue(value:unknown,fallback=0){const parsed=Number(value);return Number.isFinite(parsed)?parsed:fallback}
+
+function MessagesManagement(){
+  return <div className="space-y-5" dir="rtl">
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-black">إدارة الرسائل والمكالمات</h1><p className="text-sm text-muted-foreground">الإحصائيات والأسعار والأرباح والمستخدمون النشطون واقتراح الحسابات</p></div><Badge className="gap-2 border-emerald-500/20 bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/10"><Activity className="h-4 w-4"/>النظام يعمل</Badge></div>
+    <Tabs defaultValue="overview" className="space-y-5">
+      <TabsList className="h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 p-1.5">
+        <TabsTrigger value="overview">نظرة عامة</TabsTrigger><TabsTrigger value="pricing">الأسعار والأرباح</TabsTrigger><TabsTrigger value="active">المستخدمون النشطون</TabsTrigger><TabsTrigger value="suggestions">اقتراح الحسابات</TabsTrigger><TabsTrigger value="archive">أرشيف المحادثات</TabsTrigger>
+      </TabsList>
+      <TabsContent value="overview"><OverviewPanel/></TabsContent>
+      <TabsContent value="pricing"><PricingPanel/></TabsContent>
+      <TabsContent value="active"><ActiveUsersPanel/></TabsContent>
+      <TabsContent value="suggestions"><SuggestionsPanel/></TabsContent>
+      <TabsContent value="archive"><MessagesArchive embedded/></TabsContent>
+    </Tabs>
+  </div>
+}
+
+function OverviewPanel(){
+  const query=useQuery({queryKey:["message-dashboard"],queryFn:()=>yamoRpc<DashboardStats>("admin_get_message_dashboard",{p_days:30})});
+  const raw=(query.data??{}) as DashboardStats;
+  const stats={total_messages:numberValue(raw.total_messages),messages_today:numberValue(raw.messages_today),active_users:numberValue(raw.active_users),active_males:numberValue(raw.active_males),active_females:numberValue(raw.active_females),response_rate:numberValue(raw.response_rate),text_percent:numberValue(raw.text_percent),image_percent:numberValue(raw.image_percent),voice_percent:numberValue(raw.voice_percent),video_percent:numberValue(raw.video_percent),coins_spent:numberValue(raw.coins_spent),earnings_paid:numberValue(raw.earnings_paid)};
+  const chart=Array.isArray(raw.chart)&&raw.chart.length?raw.chart:fallbackChart;
+  const cards=[
+    {label:"إجمالي الرسائل",value:formatInteger(stats.total_messages),hint:`${formatInteger(stats.messages_today)} اليوم`,icon:MessageSquareText,color:"text-orange-500",bg:"from-orange-500/15"},
+    {label:"المتحدثون الآن",value:formatInteger(stats.active_users),hint:"داخل محادثات نشطة",icon:UsersRound,color:"text-violet-600",bg:"from-violet-500/15"},
+    {label:"الذكور النشطون",value:formatInteger(stats.active_males),hint:"مستخدم متصل",icon:UserRound,color:"text-blue-600",bg:"from-blue-500/15"},
+    {label:"الإناث النشطات",value:formatInteger(stats.active_females),hint:"مستخدمة متصلة",icon:UserRound,color:"text-pink-500",bg:"from-pink-500/15"},
+    {label:"نسبة الرد",value:`${stats.response_rate}%`,hint:"من المحادثات",icon:Activity,color:"text-emerald-600",bg:"from-emerald-500/15"},
+  ];
+  return <div className="space-y-5">
+    {query.isError&&<DataNotice message={(query.error as Error).message}/>} 
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">{cards.map(({label,value,hint,icon:Icon,color,bg})=><Card key={label} className={`overflow-hidden bg-gradient-to-bl ${bg} to-transparent`}><CardContent className="flex items-center justify-between p-4"><div><p className="text-xs font-medium text-muted-foreground">{label}</p><p className="mt-2 text-2xl font-black">{query.isLoading?"…":value}</p><p className="mt-1 text-[11px] text-muted-foreground">{hint}</p></div><div className={`grid h-11 w-11 place-items-center rounded-2xl bg-background/80 ${color}`}><Icon className="h-5 w-5"/></div></CardContent></Card>)}</div>
+    <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
+      <Card><CardHeader><CardTitle className="flex items-center gap-2 text-base"><BarChart3 className="h-5 w-5 text-violet-500"/>حركة الرسائل في التطبيق</CardTitle></CardHeader><CardContent><div className="h-72"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chart}><defs><linearGradient id="sentFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#7c3aed" stopOpacity={.35}/><stop offset="95%" stopColor="#7c3aed" stopOpacity={0}/></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false}/><XAxis dataKey="label"/><YAxis/><Tooltip/><Area type="monotone" dataKey="sent" name="الرسائل" stroke="#7c3aed" fill="url(#sentFill)" strokeWidth={3}/><Area type="monotone" dataKey="replies" name="الردود" stroke="#f97316" fill="transparent" strokeWidth={2}/></AreaChart></ResponsiveContainer></div></CardContent></Card>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1"><Card><CardHeader><CardTitle className="text-base">نسبة أنواع الرسائل</CardTitle></CardHeader><CardContent className="space-y-3"><Breakdown label="رسائل نصية" value={stats.text_percent} color="bg-violet-600"/><Breakdown label="صور" value={stats.image_percent} color="bg-orange-500"/><Breakdown label="صوتية" value={stats.voice_percent} color="bg-blue-500"/><Breakdown label="فيديو" value={stats.video_percent} color="bg-pink-500"/></CardContent></Card><Card><CardContent className="grid grid-cols-2 gap-3 p-4"><MiniMoney label="كوينز مصروفة" value={stats.coins_spent}/><MiniMoney label="أرباح موزعة" value={stats.earnings_paid}/></CardContent></Card></div>
+    </div>
+  </div>
+}
+
+function Breakdown({label,value,color}:{label:string;value:number;color:string}){return <div><div className="mb-1.5 flex justify-between text-sm"><span>{label}</span><strong>{value}%</strong></div><div className="h-2 overflow-hidden rounded-full bg-muted"><div className={`h-full rounded-full ${color}`} style={{width:`${Math.min(100,Math.max(0,value))}%`}}/></div></div>}
+function MiniMoney({label,value}:{label:string;value:number}){return <div className="rounded-xl border bg-muted/25 p-3"><Coins className="mb-2 h-5 w-5 text-orange-500"/><p className="text-xs text-muted-foreground">{label}</p><p className="mt-1 text-lg font-black">{formatInteger(value)}</p></div>}
+function DataNotice({message}:{message:string}){return <div className="rounded-xl border border-orange-400/30 bg-orange-500/10 p-3 text-sm text-orange-700">شغّل ملف SQL الخاص بالإصدار الجديد لعرض البيانات الحقيقية: {message}</div>}
+
+function PricingPanel(){
+  const query=useQuery({queryKey:["message-settings"],queryFn:()=>yamoRpc<MessageSettings>("admin_get_message_settings")});
+  const [draft,setDraft]=useState<MessageSettings>(defaultSettings);
+  useEffect(()=>{if(query.data)setDraft({...defaultSettings,...query.data})},[query.data]);
+  const save=useMutation({mutationFn:()=>yamoRpc("admin_update_message_settings",{p_settings:draft}),onSuccess:()=>toast.success("تم حفظ أسعار الرسائل والمكالمات وتسجيل التعديل"),onError:(error:Error)=>toast.error(error.message)});
+  const setNumber=(key:keyof MessageSettings,value:string)=>setDraft((old)=>({...old,[key]:Math.max(0,numberValue(value))}));
+  const priceFields:[keyof MessageSettings,string,typeof MessageCircle][]=[['text_price','سعر الرسالة النصية',MessageCircle],['image_price','سعر الصورة',ImageIcon],['voice_message_price','سعر الرسالة الصوتية',FileAudio],['voice_minute_price','سعر الدقيقة الصوتية',Phone],['video_minute_price','سعر دقيقة الفيديو',Video]];
+  return <div className="space-y-5">{query.isError&&<DataNotice message={(query.error as Error).message}/>}<div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">{priceFields.map(([key,label,Icon])=><Card key={key}><CardContent className="flex items-center gap-3 p-4"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-violet-500/15 to-orange-500/15"><Icon className="h-5 w-5 text-violet-600"/></div><div className="min-w-0 flex-1"><label className="text-sm font-bold">{label}</label><div className="mt-2 flex items-center gap-2"><Input value={String(draft[key])} onChange={(e)=>setNumber(key,e.target.value)} type="number" min="0"/><span className="text-xs text-muted-foreground">كوينز</span></div></div><Pencil className="h-4 w-4 text-muted-foreground"/></CardContent></Card>)}</div>
+    <div className="grid gap-4 lg:grid-cols-2"><Card><CardHeader><CardTitle className="text-base">توزيع أرباح الرسائل</CardTitle></CardHeader><CardContent className="space-y-4"><SettingNumber label="نسبة ربح المستلمة" value={draft.receiver_percent} suffix="%" onChange={(v)=>{const n=Math.min(100,numberValue(v));setDraft((o)=>({...o,receiver_percent:n,system_percent:100-n}))}}/><SettingNumber label="نسبة النظام" value={draft.system_percent} suffix="%" onChange={(v)=>{const n=Math.min(100,numberValue(v));setDraft((o)=>({...o,system_percent:n,receiver_percent:100-n}))}}/><div className="rounded-xl border bg-gradient-to-l from-violet-500/10 to-orange-500/10 p-4 text-sm">مثال: رسالة بـ <b>{draft.text_price}</b> كوينز = <b>{Math.round(draft.text_price*draft.receiver_percent/100)}</b> للمستلمة + <b>{Math.round(draft.text_price*draft.system_percent/100)}</b> للنظام</div></CardContent></Card><Card><CardHeader><CardTitle className="text-base">قواعد التشغيل</CardTitle></CardHeader><CardContent className="space-y-4"><SettingNumber label="الرسائل المجانية يوميًا" value={draft.daily_free_messages} suffix="رسالة" onChange={(v)=>setNumber('daily_free_messages',v)}/><SettingNumber label="الحد الأدنى لاحتساب المكالمة" value={draft.minimum_call_seconds} suffix="ثانية" onChange={(v)=>setNumber('minimum_call_seconds',v)}/><ToggleLine label="تشغيل تسعير الرسائل والمكالمات" checked={draft.pricing_enabled} onChange={(v)=>setDraft((o)=>({...o,pricing_enabled:v}))}/></CardContent></Card><Card><CardHeader><CardTitle className="text-base">إعدادات اقتراح الحسابات</CardTitle></CardHeader><CardContent className="space-y-4"><SettingNumber label="عدد الاقتراحات يوميًا" value={draft.suggestions_per_day} suffix="حساب" onChange={(v)=>setNumber('suggestions_per_day',v)}/><SettingNumber label="منع تكرار الحساب لمدة" value={draft.prevent_repeat_days} suffix="يوم" onChange={(v)=>setNumber('prevent_repeat_days',v)}/><ToggleLine label="عرض المتصلين فقط" checked={draft.online_only} onChange={(v)=>setDraft((o)=>({...o,online_only:v}))}/><ToggleLine label="تشغيل اقتراح الحسابات" checked={draft.suggestions_enabled} onChange={(v)=>setDraft((o)=>({...o,suggestions_enabled:v}))}/></CardContent></Card></div>
+    <div className="flex justify-end"><Button onClick={()=>save.mutate()} disabled={save.isPending} className="min-w-56 gap-2 bg-gradient-to-l from-orange-500 to-violet-600"><Save className="h-4 w-4"/>{save.isPending?"جارٍ الحفظ…":"حفظ التغييرات"}</Button></div>
+  </div>
+}
+
+function SettingNumber({label,value,suffix,onChange}:{label:string;value:number;suffix:string;onChange:(value:string)=>void}){return <div className="flex items-center justify-between gap-4"><label className="text-sm">{label}</label><div className="flex w-44 items-center gap-2"><Input type="number" min="0" value={value} onChange={(e)=>onChange(e.target.value)}/><span className="min-w-12 text-xs text-muted-foreground">{suffix}</span></div></div>}
+function ToggleLine({label,checked,onChange}:{label:string;checked:boolean;onChange:(value:boolean)=>void}){return <div className="flex items-center justify-between rounded-xl border p-3"><span className="text-sm font-medium">{label}</span><Switch checked={checked} onCheckedChange={onChange}/></div>}
+
+function ActiveUsersPanel(){
+  const [filter,setFilter]=useState("all");
+  const query=useQuery({queryKey:["active-message-users",filter],queryFn:()=>yamoRpc<unknown>("admin_get_active_message_users",{p_gender:filter,p_limit:100})});
+  const data=rows<ActiveConversation>(query.data);
+  return <Card><CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><div><CardTitle className="flex items-center gap-2"><UsersRound className="h-5 w-5 text-violet-500"/>مستخدمون يتحدثون الآن</CardTitle><p className="mt-1 text-xs text-muted-foreground">المحادثات النشطة خلال آخر 15 دقيقة</p></div><div className="flex gap-2">{[['all','الكل'],['male','ذكور'],['female','إناث'],['unanswered','بدون رد']].map(([value,label])=><Button key={value} size="sm" variant={filter===value?'default':'outline'} onClick={()=>setFilter(value)}>{label}</Button>)}</div></div></CardHeader><CardContent>{query.isError&&<DataNotice message={(query.error as Error).message}/>}<div className="overflow-x-auto"><table className="w-full min-w-[820px] text-sm"><thead><tr className="border-b text-muted-foreground"><th className="p-3 text-right">المستخدمان</th><th>النوع</th><th>الرسائل</th><th>المدة</th><th>الكوينز</th><th>آخر نشاط</th><th></th></tr></thead><tbody>{data.map((item,index)=><tr key={`${item.user_a_id}-${item.user_b_id}-${index}`} className="border-b last:border-0"><td className="p-3"><div className="flex items-center gap-3"><div className="flex -space-x-3 space-x-reverse"><Avatar url={item.user_a_avatar} name={item.user_a_name}/><Avatar url={item.user_b_avatar} name={item.user_b_name}/></div><div><b>{item.user_a_name} × {item.user_b_name}</b><p className="text-xs text-muted-foreground">{item.user_a_id} ↔ {item.user_b_id}</p></div></div></td><td className="text-center"><GenderBadge value={item.user_a_gender}/><span className="mx-1">/</span><GenderBadge value={item.user_b_gender}/></td><td className="text-center font-bold">{formatInteger(item.message_count)}</td><td className="text-center">{formatInteger(item.duration_minutes)} د</td><td className="text-center">{formatInteger(item.coins_spent)}</td><td className="text-center text-xs">{item.last_message_at?formatDateTime(item.last_message_at):'—'}</td><td><Button size="sm" variant="outline" onClick={()=>toast.info(`ابحث عن ${item.user_a_id} في أرشيف المحادثات`)}>عرض المحادثة</Button></td></tr>)}{!query.isLoading&&!query.isError&&!data.length&&<tr><td colSpan={7} className="p-14 text-center text-muted-foreground">لا توجد محادثات نشطة مطابقة حاليًا</td></tr>}</tbody></table></div></CardContent></Card>
+}
+
+function GenderBadge({value}:{value?:string|null}){const female=value==='female';return <Badge variant="outline" className={female?'border-pink-300 bg-pink-50 text-pink-600':'border-blue-300 bg-blue-50 text-blue-600'}>{female?'أنثى':'ذكر'}</Badge>}
+
+function SuggestionsPanel(){
+  const settingsQuery=useQuery({queryKey:["message-settings"],queryFn:()=>yamoRpc<MessageSettings>("admin_get_message_settings")});
+  const suggestions=useQuery({queryKey:["message-suggestions"],queryFn:()=>yamoRpc<unknown>("admin_get_message_suggestions",{p_limit:24})});
+  const [manualId,setManualId]=useState("");
+  const list=rows<Suggestion>(suggestions.data);
+  const pin=useMutation({mutationFn:(legacyId:string)=>yamoRpc("admin_pin_message_suggestion",{p_legacy_id:legacyId,p_priority:100,p_days:30}),onSuccess:async()=>{toast.success("تم تثبيت الحساب في الاقتراحات");setManualId("");await suggestions.refetch()},onError:(error:Error)=>toast.error(error.message)});
+  const loadError=(settingsQuery.error||suggestions.error) as Error|null;
+  return <div className="space-y-4">{loadError&&<DataNotice message={loadError.message}/>}<Card><CardHeader><CardTitle className="flex items-center gap-2"><Sparkles className="h-5 w-5 text-orange-500"/>إعدادات اقتراح الحسابات</CardTitle></CardHeader><CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4"><div><label className="mb-2 block text-xs font-medium">عدد الاقتراحات يوميًا</label><Input value={settingsQuery.data?.suggestions_per_day??20} readOnly/></div><ToggleLine label="المتصلون فقط" checked={settingsQuery.data?.online_only??true} onChange={()=>toast.info('يتم تعديلها من تبويب الأسعار والأرباح')}/><div><label className="mb-2 block text-xs font-medium">اختيار ID يدويًا</label><div className="flex gap-2"><Input value={manualId} onChange={(e)=>setManualId(e.target.value)} placeholder="ID المستخدم"/><Button disabled={!manualId.trim()||pin.isPending} onClick={()=>pin.mutate(manualId.trim())}><Star className="h-4 w-4"/></Button></div></div><ToggleLine label="منع تكرار الحساب" checked={(settingsQuery.data?.prevent_repeat_days??7)>0} onChange={()=>toast.info('يتم تعديلها من تبويب الأسعار والأرباح')}/></CardContent></Card>
+    <Card><CardHeader><div className="flex items-center justify-between"><CardTitle>اقتراح الحسابات بالتمرير</CardTitle><Badge variant="secondary">{formatInteger(list.length)} حساب</Badge></div></CardHeader><CardContent><div className="flex snap-x gap-4 overflow-x-auto pb-4">{list.map((user)=><div key={user.legacy_id} className="w-56 shrink-0 snap-start overflow-hidden rounded-2xl border bg-card shadow-sm"><div className="h-20 bg-gradient-to-l from-violet-500/25 to-orange-500/25"/><div className="-mt-10 p-4"><Avatar url={user.avatar_url} name={user.display_name} size="lg"/><div className="mt-3 flex items-start justify-between"><div><h3 className="font-black">{user.display_name}</h3><p className="text-xs text-muted-foreground">ID {user.legacy_id}</p></div>{user.is_online&&<span className="mt-1 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/15"/>}</div><div className="mt-3 flex flex-wrap gap-1"><GenderBadge value={user.gender}/>{numberValue(user.vip_level)>0&&<Badge className="bg-orange-500">VIP {user.vip_level}</Badge>}<Badge variant="secondary">LVL {numberValue(user.level)}</Badge></div><p className="mt-3 text-xs text-muted-foreground">{user.country||'الدولة غير محددة'}{user.age?` · ${user.age} سنة`:''}</p><div className="mt-4 grid grid-cols-2 gap-2"><Button size="sm">تثبيت</Button><Button size="sm" variant="outline">معاينة</Button></div></div></div>)}{!suggestions.isLoading&&!suggestions.isError&&!list.length&&<div className="grid h-64 w-full place-items-center text-muted-foreground">لا توجد حسابات متاحة للاقتراح حاليًا</div>}</div></CardContent></Card>
+    <Card className="border-violet-500/20 bg-gradient-to-l from-violet-500/10 to-orange-500/10"><CardContent className="flex items-start gap-3 p-4"><ShieldCheck className="mt-0.5 h-5 w-5 text-violet-600"/><div><h3 className="font-bold">الاقتراحات تظهر باسم نظام يامو</h3><p className="mt-1 text-sm text-muted-foreground">التطبيق يعرض الحساب المقترح ورسالة جاهزة، ولا تُرسل أي رسالة باسم المستخدم إلا بعد أن يضغط إرسال بنفسه.</p></div></CardContent></Card>
+  </div>
+}
+
+function MessagesArchive({embedded=false}:{embedded?:boolean}){
   const [draftId,setDraftId]=useState("");
   const [userId,setUserId]=useState("");
   const [days,setDays]=useState("30");
@@ -47,8 +141,8 @@ function MessagesArchive(){
   const deletedTotal=useMemo(()=>threads.reduce((sum,thread)=>sum+Number(thread.deleted_count||0),0),[threads]);
   const runSearch=()=>{const clean=draftId.trim();if(clean)search.mutate(clean)};
   return <div className="space-y-5">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><h1 className="text-2xl font-black">أرشيف الرسائل والمحادثات</h1><p className="text-sm text-muted-foreground">عرض إداري محمي للرسائل والوسائط الأصلية بما فيها العناصر المحذوفة من المستخدمين</p></div><Badge variant="outline" className="gap-2 px-3 py-1.5"><ShieldCheck className="h-4 w-4 text-emerald-500"/>عرض فقط ومسجل</Badge></div>
-    <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_auto]"><div className="relative"><Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground"/><Input value={draftId} onChange={(event)=>setDraftId(event.target.value.replace(/[^A-Za-z0-9_-]/g,""))} onKeyDown={(event)=>event.key==="Enter"&&runSearch()} placeholder="اكتب ID المستخدم — أرقام أو حروف إنجليزية" className="pr-10" inputMode="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}/></div><Select value={days} onValueChange={setDays}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="7">آخر 7 أيام</SelectItem><SelectItem value="30">آخر 30 يومًا</SelectItem><SelectItem value="90">آخر 90 يومًا</SelectItem><SelectItem value="3650">كل الرسائل</SelectItem></SelectContent></Select><Button onClick={runSearch} disabled={!draftId.trim()||search.isPending} className="gap-2">{search.isPending?<Loader2 className="h-4 w-4 animate-spin"/>:<Eye className="h-4 w-4"/>}عرض السجل</Button></CardContent></Card>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div>{!embedded&&<h1 className="text-2xl font-black">أرشيف الرسائل والمحادثات</h1>}<p className="text-sm text-muted-foreground">عرض إداري محمي للرسائل والوسائط الأصلية بما فيها العناصر المحذوفة من المستخدمين</p></div><Badge variant="outline" className="gap-2 px-3 py-1.5"><ShieldCheck className="h-4 w-4 text-emerald-500"/>عرض فقط ومسجل</Badge></div>
+    <Card><CardContent className="grid gap-3 p-4 md:grid-cols-[1fr_180px_auto]"><div className="relative"><Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground"/><Input value={draftId} onChange={(event)=>setDraftId(event.target.value)} onKeyDown={(event)=>event.key==="Enter"&&runSearch()} placeholder="اكتب ID المستخدم" className="pr-10" type="text" inputMode="text" autoCapitalize="none" autoCorrect="off" spellCheck={false}/></div><Select value={days} onValueChange={setDays}><SelectTrigger><SelectValue/></SelectTrigger><SelectContent><SelectItem value="7">آخر 7 أيام</SelectItem><SelectItem value="30">آخر 30 يومًا</SelectItem><SelectItem value="90">آخر 90 يومًا</SelectItem><SelectItem value="3650">كل الرسائل</SelectItem></SelectContent></Select><Button onClick={runSearch} disabled={!draftId.trim()||search.isPending} className="gap-2">{search.isPending?<Loader2 className="h-4 w-4 animate-spin"/>:<Eye className="h-4 w-4"/>}عرض السجل</Button></CardContent></Card>
     {search.isError&&<div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">تعذر البحث: {(search.error as Error).message}</div>}
     {search.isSuccess&&!userId&&<div className="rounded-xl border p-6 text-center text-muted-foreground">لم يتم العثور على مستخدم بهذا الـ ID</div>}
     {user&&<div className="grid gap-4 xl:grid-cols-[290px_1fr]">
