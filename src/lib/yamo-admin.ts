@@ -33,6 +33,12 @@ export async function yamoRows(source: string, limit = 200): Promise<Record<stri
   return (data ?? []) as Record<string, unknown>[];
 }
 
+export async function yamoRowsNewest(source: string, limit = 200): Promise<Record<string, unknown>[]> {
+  const { data, error } = await supabase.from(source as never).select("*").order("created_at", { ascending: false }).limit(limit);
+  if (error) throw error;
+  return (data ?? []) as Record<string, unknown>[];
+}
+
 
 export type YamoAdminUserLookup = {
   id: string;
