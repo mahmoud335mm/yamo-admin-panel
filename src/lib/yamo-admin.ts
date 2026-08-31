@@ -86,6 +86,18 @@ export async function yamoRpc<T = unknown>(
   return data as T;
 }
 
+export async function uploadYamoCampaignMedia(file: File): Promise<string> {
+  if (!file.type.startsWith("image/")) throw new Error("اختر ملف صورة صحيح");
+  if (file.size > 8 * 1024 * 1024) throw new Error("حجم الصورة يجب ألا يتجاوز 8 MB");
+  const safeName = file.name.toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
+  const path = `campaigns/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}-${safeName}`;
+  const { error } = await supabase.storage.from("campaign-media").upload(path, file, {
+    cacheControl: "3600", upsert: false, contentType: file.type,
+  });
+  if (error) throw error;
+  return supabase.storage.from("campaign-media").getPublicUrl(path).data.publicUrl;
+}
+
 export function readableValue(value: unknown): string {
   if (value == null) return "—";
   if (typeof value === "boolean") return value ? "نعم" : "لا";

@@ -1,36 +1,54 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { YamoDataModule } from "@/components/yamo-data-module";
-import { YamoCommandCard } from "@/components/yamo-command-card";
-export const Route = createFileRoute("/_authenticated/banners")({
-  component: () => (
-    <div className="space-y-5">
-      <YamoCommandCard
-        title="تحديث بنر التطبيق"
-        description="ضع رابط الصورة والعنوان والرابط الداخلي وحالة الظهور"
-        rpc="admin_set_yamo_banner"
-        refreshSource="app_config"
-        fields={[
-          { key: "slot", label: "مكان البنر", initial: "home_banner", required: true },
-          { key: "image", label: "رابط الصورة 1029×540", required: true },
-          { key: "title", label: "العنوان" },
-          { key: "link", label: "الرابط الداخلي" },
-          { key: "enabled", label: "ظاهر", type: "checkbox" },
-        ]}
-        buildArgs={(v) => ({
-          p_key: v.slot,
-          p_value: { image_url: v.image, title: v.title, deep_link: v.link, enabled: v.enabled },
-        })}
-      />
-      <YamoDataModule
-        title="البنرات والمحتوى الرئيسي"
-        description="الإعدادات التي يقرأها التطبيق مباشرة"
-        source="app_config"
-        columns={[
-          { key: "config_key", label: "المفتاح" },
-          { key: "config_value", label: "القيمة" },
-          { key: "updated_at", label: "آخر تحديث" },
-        ]}
-      />
-    </div>
-  ),
-});
+import { useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { BellRing, Eye, ImagePlus, Loader2, Megaphone, MousePointerClick, Rocket, Send, Upload } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { uploadYamoCampaignMedia, yamoRows, yamoRpc } from "@/lib/yamo-admin";
+
+type Kind = "banner" | "instant_message";
+type Draft = { kind: Kind; titleAr: string; titleEn: string; bodyAr: string; bodyEn: string; imageUrl: string; destinationType: string; destinationValue: string; segment: string; placement: string; buttonAr: string; buttonEn: string; scheduledAt: string; endsAt: string; enabled: boolean; showText: boolean };
+const start: Draft = { kind:"banner", titleAr:"", titleEn:"", bodyAr:"", bodyEn:"", imageUrl:"", destinationType:"room", destinationValue:"", segment:"all", placement:"home", buttonAr:"عرض الآن", buttonEn:"View now", scheduledAt:"", endsAt:"", enabled:true, showText:true };
+const destinations = [["room","غرفة"],["event","حدث"],["activity","فعالية"],["user","مستخدم"],["agency","وكالة"],["page","صفحة داخل التطبيق"]];
+
+function CampaignsPage() {
+  const [draft,setDraft]=useState<Draft>(start); const [uploading,setUploading]=useState(false); const qc=useQueryClient();
+  const campaigns=useQuery({queryKey:["yamo-admin","admin_yamo_campaigns"],queryFn:()=>yamoRows("admin_yamo_campaigns",100)});
+  const stats=useMemo(()=>{const rows=campaigns.data??[];return{active:rows.filter(r=>r.enabled===true).length,sent:rows.reduce((n,r)=>n+Number(r.sent_count??0),0),clicks:rows.reduce((n,r)=>n+Number(r.click_count??0),0)}},[campaigns.data]);
+  const set=<K extends keyof Draft>(key:K,value:Draft[K])=>setDraft(old=>({...old,[key]:value}));
+  const save=useMutation({mutationFn:()=>yamoRpc("admin_save_yamo_campaign",{p_kind:draft.kind,p_title_ar:draft.titleAr,p_title_en:draft.titleEn||null,p_body_ar:draft.bodyAr,p_body_en:draft.bodyEn||null,p_image_url:draft.imageUrl||null,p_destination_type:draft.destinationType,p_destination_value:draft.destinationValue||null,p_segment:draft.segment,p_placement:draft.kind==="banner"?draft.placement:null,p_button_ar:draft.buttonAr||null,p_button_en:draft.buttonEn||null,p_scheduled_at:draft.scheduledAt?new Date(draft.scheduledAt).toISOString():null,p_ends_at:draft.endsAt?new Date(draft.endsAt).toISOString():null,p_enabled:draft.enabled,p_content_mode:draft.showText?"image_text":"image"}),onSuccess:async()=>{toast.success(draft.kind==="banner"?"تم نشر البنر":"تم تجهيز الرسالة الفورية");await qc.invalidateQueries({queryKey:["yamo-admin","admin_yamo_campaigns"]})},onError:(e:Error)=>toast.error(e.message)});
+  const changeState=async(id:string,enabled:boolean|null,remove=false)=>{if(remove&&!window.confirm("حذف الحملة نهائيًا؟"))return;try{await yamoRpc("admin_set_yamo_campaign_state",{p_id:id,p_enabled:enabled,p_delete:remove});toast.success(remove?"تم حذف الحملة":"تم تحديث الحالة");await qc.invalidateQueries({queryKey:["yamo-admin","admin_yamo_campaigns"]})}catch(e){toast.error(e instanceof Error?e.message:"تعذر تحديث الحملة")}};
+  const upload=async(file?:File)=>{if(!file)return;setUploading(true);try{set("imageUrl",await uploadYamoCampaignMedia(file));toast.success("تم رفع الصورة")}catch(e){toast.error(e instanceof Error?e.message:"تعذر رفع الصورة")}finally{setUploading(false)}};
+  return <div className="space-y-5" dir="rtl">
+    <div className="grid gap-3 md:grid-cols-3"><Stat icon={Rocket} label="الحملات النشطة" value={stats.active}/><Stat icon={BellRing} label="تم الإرسال" value={stats.sent}/><Stat icon={MousePointerClick} label="إجمالي الضغطات" value={stats.clicks}/></div>
+    <Tabs value={draft.kind} onValueChange={v=>set("kind",v as Kind)}><TabsList className="grid h-12 w-full max-w-xl grid-cols-2 rounded-2xl bg-violet-500/10 p-1"><TabsTrigger value="banner" className="rounded-xl"><Megaphone className="ml-2 h-4 w-4"/>البنرات</TabsTrigger><TabsTrigger value="instant_message" className="rounded-xl"><BellRing className="ml-2 h-4 w-4"/>الرسائل الفورية</TabsTrigger></TabsList>
+      <TabsContent value="banner"><Editor title="إنشاء بنر جديد" description="المقاس المعتمد 1029 × 540 — صورة أو نص وصورة" {...{draft,set,upload,uploading}} saving={save.isPending} submit={()=>save.mutate()}/></TabsContent>
+      <TabsContent value="instant_message"><Editor title="إرسال رسالة فورية" description="تصل داخل التطبيق وتدعم النص والصورة والوجهة" {...{draft,set,upload,uploading}} saving={save.isPending} submit={()=>save.mutate()}/></TabsContent>
+    </Tabs>
+    <Card className="overflow-hidden border-violet-500/15"><CardHeader><CardTitle>آخر الحملات</CardTitle><CardDescription>جميع البنرات والرسائل المجدولة والمنشورة</CardDescription></CardHeader><CardContent className="overflow-x-auto"><table className="w-full min-w-[950px] text-sm"><thead><tr className="border-b text-muted-foreground"><th className="p-3 text-right">النوع</th><th className="p-3 text-right">العنوان</th><th className="p-3 text-right">الوجهة</th><th className="p-3 text-right">الجمهور</th><th className="p-3 text-right">الحالة</th><th className="p-3 text-right">الإرسال</th><th className="p-3 text-right">الإجراءات</th></tr></thead><tbody>{(campaigns.data??[]).map(row=><tr key={String(row.id)} className="border-b last:border-0"><td className="p-3">{row.kind==="banner"?"بنر":"رسالة فورية"}</td><td className="p-3 font-bold">{String(row.title_ar??"—")}</td><td className="p-3">{String(row.destination_type??"—")} {row.destination_value?`• ${row.destination_value}`:""}</td><td className="p-3">{String(row.segment??"all")}</td><td className="p-3"><span className={`rounded-full px-3 py-1 text-xs font-bold ${row.enabled?"bg-emerald-500/10 text-emerald-600":"bg-muted text-muted-foreground"}`}>{row.enabled?"نشط":"متوقف"}</span></td><td className="p-3 font-mono">{Number(row.sent_count??0).toLocaleString("en-US")}</td><td className="p-3"><div className="flex gap-2"><Button size="sm" variant="outline" onClick={()=>changeState(String(row.id),!row.enabled)}>{row.enabled?"إيقاف":"تشغيل"}</Button><Button size="sm" variant="destructive" onClick={()=>changeState(String(row.id),null,true)}>حذف</Button></div></td></tr>)}</tbody></table></CardContent></Card>
+  </div>;
+}
+
+function Editor({title,description,draft,set,upload,uploading,saving,submit}:{title:string;description:string;draft:Draft;set:<K extends keyof Draft>(key:K,value:Draft[K])=>void;upload:(file?:File)=>void;uploading:boolean;saving:boolean;submit:()=>void}) {
+  return <Card className="mt-4 overflow-hidden border-violet-500/20 shadow-xl shadow-violet-500/5"><CardHeader className="bg-gradient-to-l from-violet-500/10 to-orange-500/5"><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent className="grid gap-5 p-5 lg:grid-cols-2"><div className="space-y-4">
+    <Field label="العنوان العربي"><Input value={draft.titleAr} onChange={e=>set("titleAr",e.target.value)} required/></Field><Field label="النص العربي"><textarea className="min-h-24 w-full rounded-xl border bg-background p-3 text-sm" value={draft.bodyAr} onChange={e=>set("bodyAr",e.target.value)}/></Field>
+    <div className="grid gap-3 sm:grid-cols-2"><Field label="العنوان الإنجليزي"><Input value={draft.titleEn} onChange={e=>set("titleEn",e.target.value)}/></Field><Field label="زر الإجراء"><Input value={draft.buttonAr} onChange={e=>set("buttonAr",e.target.value)}/></Field></div>
+    <Field label="صورة الحملة"><label className="flex cursor-pointer items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-violet-400/30 bg-violet-500/5 p-5 font-bold text-violet-600 hover:bg-violet-500/10"><input type="file" accept="image/*" className="hidden" onChange={e=>upload(e.target.files?.[0])}/>{uploading?<Loader2 className="h-5 w-5 animate-spin"/>:<Upload className="h-5 w-5"/>}{uploading?"جاري الرفع":"ارفع صورة"}</label></Field><Field label="أو رابط الصورة"><Input value={draft.imageUrl} onChange={e=>set("imageUrl",e.target.value)} dir="ltr"/></Field>
+  </div><div className="space-y-4">
+    {draft.imageUrl?<img src={draft.imageUrl} alt="معاينة" className="aspect-[1029/540] w-full rounded-2xl border object-cover shadow-lg"/>:<div className="grid aspect-[1029/540] place-items-center rounded-2xl border-2 border-dashed bg-muted/20 text-muted-foreground"><div className="text-center"><ImagePlus className="mx-auto mb-2 h-8 w-8"/>معاينة 1029 × 540</div></div>}
+    <div><Label className="mb-2 block font-black">الوجهة عند الضغط</Label><div className="grid grid-cols-2 gap-2 sm:grid-cols-3">{destinations.map(([v,l])=><button type="button" key={v} onClick={()=>set("destinationType",v)} className={`rounded-xl border p-3 text-sm font-bold transition ${draft.destinationType===v?"border-violet-500 bg-violet-500/10 text-violet-600 shadow-md":"hover:border-violet-300"}`}>{l}</button>)}</div></div>
+    <Field label={draft.destinationType==="page"?"اسم الصفحة: posts / rooms / messages / profile / vip / tasks":"ID الوجهة"}><Input value={draft.destinationValue} onChange={e=>set("destinationValue",e.target.value)} dir="ltr"/></Field>
+    <div className="grid gap-3 sm:grid-cols-2"><Field label="الجمهور"><Select value={draft.segment} onChange={v=>set("segment",v)} options={[["all","كل المستخدمين"],["vip","VIP"],["hosts","المضيفون"],["male","الذكور"],["female","الإناث"]]}/></Field>{draft.kind==="banner"&&<Field label="مكان الظهور"><Select value={draft.placement} onChange={v=>set("placement",v)} options={[["home","الرئيسية"],["rooms","الغرف"],["messages","الرسائل"]]}/></Field>}</div>
+    <div className="grid gap-3 sm:grid-cols-2"><Field label="وقت النشر"><Input type="datetime-local" value={draft.scheduledAt} onChange={e=>set("scheduledAt",e.target.value)}/></Field><Field label="وقت الانتهاء"><Input type="datetime-local" value={draft.endsAt} onChange={e=>set("endsAt",e.target.value)}/></Field></div>
+    <div className="grid gap-2 sm:grid-cols-2"><label className="flex items-center gap-3 rounded-xl border p-3"><input type="checkbox" checked={draft.enabled} onChange={e=>set("enabled",e.target.checked)}/><span className="font-bold">الحملة نشطة</span></label><label className="flex items-center gap-3 rounded-xl border p-3"><input type="checkbox" checked={draft.showText} onChange={e=>set("showText",e.target.checked)}/><span className="font-bold">عرض النص فوق الصورة</span></label></div>
+    <div className="flex gap-3"><Button type="button" variant="outline" className="flex-1 rounded-xl"><Eye className="ml-2 h-4 w-4"/>معاينة</Button><Button type="button" disabled={saving||(draft.kind==="banner"&&!draft.imageUrl)||(!draft.titleAr&&!draft.imageUrl)} onClick={submit} className="flex-1 rounded-xl bg-gradient-to-l from-orange-500 via-pink-500 to-violet-600 text-white shadow-lg shadow-violet-500/25">{saving?<Loader2 className="ml-2 h-4 w-4 animate-spin"/>:draft.kind==="banner"?<Rocket className="ml-2 h-4 w-4"/>:<Send className="ml-2 h-4 w-4"/>}{draft.kind==="banner"?"نشر البنر":"إرسال الرسالة"}</Button></div>
+  </div></CardContent></Card>;
+}
+function Field({label,children}:{label:string;children:ReactNode}){return <div className="space-y-2"><Label>{label}</Label>{children}</div>}
+function Select({value,onChange,options}:{value:string;onChange:(v:string)=>void;options:string[][]}){return <select value={value} onChange={e=>onChange(e.target.value)} className="h-10 w-full rounded-xl border bg-background px-3 text-sm">{options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>}
+function Stat({icon:Icon,label,value}:{icon:typeof Megaphone;label:string;value:number}){return <Card className="border-violet-500/15"><CardContent className="flex items-center gap-4 p-4"><div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-violet-600 text-white shadow-lg"><Icon className="h-5 w-5"/></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-2xl font-black">{value.toLocaleString("en-US")}</p></div></CardContent></Card>}
+export const Route=createFileRoute("/_authenticated/banners")({component:CampaignsPage});

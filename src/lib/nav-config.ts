@@ -306,8 +306,8 @@ export const navItems: NavItem[] = [
   },
   {
     to: "/banners",
-    labelAr: "البنرات",
-    labelEn: "Banners",
+    labelAr: "البنرات والرسائل الفورية",
+    labelEn: "Banners & Instant Messages",
     icon: ImageIcon,
     permission: "banners.read",
   },
