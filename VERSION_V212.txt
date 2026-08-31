@@ -1,0 +1,8 @@
+Yamo Admin V212 — Message Management Dashboard
+
+- Full messages and calls management design.
+- Real Supabase statistics and pricing settings.
+- Active male/female conversation analytics.
+- Scrollable account suggestions and manual ID pinning.
+- Existing immutable message archive preserved.
+- Message permissions live under Admins, not inside Messages.

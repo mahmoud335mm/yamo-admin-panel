@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Sparkles, Loader2, Mail, ShieldCheck } from "lucide-react";
+import { Loader2, Mail, ShieldCheck } from "lucide-react";
 import { logAudit } from "@/lib/audit";
 import { Badge } from "@/components/ui/badge";
 
@@ -130,9 +130,11 @@ function AuthPage() {
     <div dir="rtl" className="grid min-h-screen place-items-center bg-gradient-to-br from-orange-50 via-background to-purple-50 p-6 dark:from-slate-950 dark:via-background dark:to-slate-900">
       <Card className="w-full max-w-md border-orange-200/60 shadow-xl dark:border-slate-800">
         <CardHeader className="text-center">
-          <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 to-purple-600 text-white shadow-lg">
-            <Sparkles className="h-6 w-6" />
-          </div>
+          <img
+            src="/brand/yamo-logo-192.png"
+            alt="Yamo"
+            className="mx-auto mb-3 h-16 w-16 rounded-2xl object-cover shadow-lg shadow-violet-500/15"
+          />
           <CardTitle className="text-2xl">لوحة تحكم يامو شات</CardTitle>
           <CardDescription>Yamo Chat Admin Console — تسجيل دخول المسؤولين</CardDescription>
         </CardHeader>

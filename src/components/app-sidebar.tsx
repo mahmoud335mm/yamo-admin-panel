@@ -7,7 +7,7 @@ import {
   SidebarHeader, SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Sparkles, ChevronLeft } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useAdminLanguage } from "@/lib/admin-language";
 
 function isChildActive(pathname: string, to: string) {
@@ -91,9 +91,11 @@ export function AppSidebar() {
     <Sidebar collapsible="icon" side="right" className="yamo-sidebar">
       <SidebarHeader className="border-b border-white/10">
         <div className="flex items-center gap-3 px-2 py-3">
-          <div className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-orange-500 via-fuchsia-500 to-violet-600 text-white shadow-lg shadow-violet-950/30">
-            <Sparkles className="h-4 w-4" />
-          </div>
+          <img
+            src="/brand/yamo-logo-192.png"
+            alt="Yamo"
+            className="h-11 w-11 shrink-0 rounded-2xl object-cover shadow-lg shadow-violet-500/15"
+          />
           {!collapsed && (
             <div className="flex flex-col leading-tight">
               <span className="text-sm font-black">{language === "ar" ? "لوحة تحكم يامو" : "Yamo Admin Console"}</span>

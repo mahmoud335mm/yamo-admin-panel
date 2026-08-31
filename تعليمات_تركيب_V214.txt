@@ -1,0 +1,21 @@
+تحديث لوحة يامو V214 الكامل
+
+1) انسخ مجلدي src وsupabase داخل مجلد مشروع yamo-admin-panel الموجود فيه package.json.
+2) وافق على Replace.
+3) افتح Supabase SQL Editor.
+4) إذا سبق وشغلت SQL الأرشيف V211، شغّل فقط:
+   supabase/migrations/202608290001_yamo_message_management.sql
+5) إذا لم تشغل V211 من قبل، شغّل أولًا:
+   supabase/migrations/202608280001_yamo_admin_message_archive.sql
+   ثم شغّل ملف 202608290001_yamo_message_management.sql
+6) في GitHub Desktop اكتب Summary:
+   Add V214 language switcher and message sections
+7) اضغط Commit ثم Push origin.
+8) بعد اكتمال النشر افتح اللوحة واضغط Ctrl + F5.
+
+ملاحظات:
+- النصوص داخل الأسعار عربية والأرقام فقط إنجليزية.
+- علامة القلم تحدد حقل السعر لتعديله.
+- زر العربية / English موجود في الشريط العلوي ويحفظ الاختيار.
+- تصميم الأزرار المضيء مطبق من المكوّن العام للوحة.
+- إدارة الأقسام موجودة داخل قسم الرسائل.
