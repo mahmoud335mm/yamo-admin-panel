@@ -1,3 +1,0 @@
--- نفّذ محتوى الملف التالي كاملًا في Supabase SQL Editor:
--- supabase/migrations/202608290001_yamo_message_management.sql
--- هذا الملف المختصر للتنبيه فقط؛ ملف Migration هو الملف التنفيذي الكامل.

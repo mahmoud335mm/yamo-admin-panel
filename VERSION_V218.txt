@@ -1,8 +1,0 @@
-Yamo Admin V218 — Campaign Lifecycle
-
-- Real destination lookup and preview by ID.
-- Edit, copy, start, stop, renew and soft archive.
-- 1/3/7/30-day or custom renewal through the management action.
-- Start/end dates, computed status and remaining lifetime.
-- Immutable campaign operation history.
-- Existing banners and every V217 feature retained.

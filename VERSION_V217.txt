@@ -1,9 +1,0 @@
-Yamo Admin V217 — Campaign Studio
-
-- Rebuilt campaign page into five clear sections.
-- Real live preview updates while typing and uploading.
-- Banner text appears below the image in preview and app.
-- Five original Yamo banners are visible and reusable.
-- Modern immediate/scheduled start and end date panel.
-- Campaign history is sorted newest first and shows schedule dates.
-- All V216 backend, targeting, destinations, permissions and controls remain.

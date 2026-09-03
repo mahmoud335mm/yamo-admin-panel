@@ -5,8 +5,8 @@ export const Route = createFileRoute("/_authenticated/notifications")({
   component: () => (
     <div className="space-y-5">
       <YamoCommandCard
-        title="إرسال إشعار جماعي"
-        description="إرسال فعلي لكل المستخدمين أو VIP أو المضيفين"
+        title="إنشاء رسالة فورية"
+        description="قسم مستقل للرسائل اليدوية أو الفورية؛ رسائل النظام التلقائية لها قسم منفصل"
         rpc="admin_broadcast_yamo_notification_v2"
         refreshSource="admin_notifications"
         submitLabel="إرسال الآن"
@@ -31,8 +31,8 @@ export const Route = createFileRoute("/_authenticated/notifications")({
         })}
       />
       <YamoDataModule
-        title="الإشعارات"
-        description="الإشعارات المسجلة وحالة القراءة"
+        title="سجل الرسائل الفورية"
+        description="الرسائل اليدوية المسجلة وحالة القراءة"
         source="admin_notifications"
         columns={[
           { key: "id", label: "المرجع" },

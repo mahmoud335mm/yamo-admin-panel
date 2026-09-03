@@ -29,6 +29,7 @@ import { Route as AuthenticatedPearlPurchasesRouteImport } from './routes/_authe
 import { Route as AuthenticatedPearlCoinExchangesRouteImport } from './routes/_authenticated/pearl-coin-exchanges'
 import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated/operations'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
+import { Route as AuthenticatedSystemMessagesRouteImport } from './routes/_authenticated/system-messages'
 import { Route as AuthenticatedModerationRouteImport } from './routes/_authenticated/moderation'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
@@ -186,6 +187,12 @@ const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
     path: '/notifications',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
+const AuthenticatedSystemMessagesRoute =
+  AuthenticatedSystemMessagesRouteImport.update({
+    id: '/system-messages',
+    path: '/system-messages',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModerationRoute = AuthenticatedModerationRouteImport.update({
@@ -498,6 +505,7 @@ export interface FileRoutesByFullPath {
   '/messages': typeof AuthenticatedMessagesRoute
   '/moderation': typeof AuthenticatedModerationRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
+  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/operations': typeof AuthenticatedOperationsRoute
   '/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -568,6 +576,7 @@ export interface FileRoutesByTo {
   '/messages': typeof AuthenticatedMessagesRoute
   '/moderation': typeof AuthenticatedModerationRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
+  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/operations': typeof AuthenticatedOperationsRoute
   '/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -641,6 +650,7 @@ export interface FileRoutesById {
   '/_authenticated/messages': typeof AuthenticatedMessagesRoute
   '/_authenticated/moderation': typeof AuthenticatedModerationRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
+  '/_authenticated/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/_authenticated/operations': typeof AuthenticatedOperationsRoute
   '/_authenticated/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/_authenticated/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -714,6 +724,7 @@ export interface FileRouteTypes {
     | '/messages'
     | '/moderation'
     | '/notifications'
+    | '/system-messages'
     | '/operations'
     | '/pearl-coin-exchanges'
     | '/pearl-purchases'
@@ -784,6 +795,7 @@ export interface FileRouteTypes {
     | '/messages'
     | '/moderation'
     | '/notifications'
+    | '/system-messages'
     | '/operations'
     | '/pearl-coin-exchanges'
     | '/pearl-purchases'
@@ -856,6 +868,7 @@ export interface FileRouteTypes {
     | '/_authenticated/messages'
     | '/_authenticated/moderation'
     | '/_authenticated/notifications'
+    | '/_authenticated/system-messages'
     | '/_authenticated/operations'
     | '/_authenticated/pearl-coin-exchanges'
     | '/_authenticated/pearl-purchases'
@@ -1043,6 +1056,13 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/system-messages': {
+      id: '/_authenticated/system-messages'
+      path: '/system-messages'
+      fullPath: '/system-messages'
+      preLoaderRoute: typeof AuthenticatedSystemMessagesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/moderation': {
@@ -1583,6 +1603,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRoute
   AuthenticatedModerationRoute: typeof AuthenticatedModerationRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
+  AuthenticatedSystemMessagesRoute: typeof AuthenticatedSystemMessagesRoute
   AuthenticatedOperationsRoute: typeof AuthenticatedOperationsRoute
   AuthenticatedPearlCoinExchangesRoute: typeof AuthenticatedPearlCoinExchangesRoute
   AuthenticatedPearlPurchasesRoute: typeof AuthenticatedPearlPurchasesRoute
@@ -1636,6 +1657,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMessagesRoute: AuthenticatedMessagesRoute,
   AuthenticatedModerationRoute: AuthenticatedModerationRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
+  AuthenticatedSystemMessagesRoute: AuthenticatedSystemMessagesRoute,
   AuthenticatedOperationsRoute: AuthenticatedOperationsRoute,
   AuthenticatedPearlCoinExchangesRoute: AuthenticatedPearlCoinExchangesRoute,
   AuthenticatedPearlPurchasesRoute: AuthenticatedPearlPurchasesRoute,

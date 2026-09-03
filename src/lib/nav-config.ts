@@ -306,8 +306,8 @@ export const navItems: NavItem[] = [
   },
   {
     to: "/banners",
-    labelAr: "البنرات والرسائل الفورية",
-    labelEn: "Banners & Instant Messages",
+    labelAr: "البنرات",
+    labelEn: "Banners",
     icon: ImageIcon,
     permission: "banners.read",
   },
@@ -320,10 +320,17 @@ export const navItems: NavItem[] = [
   },
   {
     to: "/notifications",
-    labelAr: "الإشعارات",
-    labelEn: "Notifications",
+    labelAr: "الرسائل الفورية",
+    labelEn: "Instant Messages",
     icon: Bell,
     permission: "notifications.read",
+  },
+  {
+    to: "/system-messages",
+    labelAr: "رسائل النظام التلقائية",
+    labelEn: "System Messages",
+    icon: Bot,
+    permission: "system_messages.read",
   },
   {
     to: "/support-tickets",
