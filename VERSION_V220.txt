@@ -1,0 +1,11 @@
+Yamo Admin V220 — Dedicated Instant Messages Studio
+
+- Replaced the old notification form with the approved premium instant-message page.
+- Instant messages, banners and automatic system messages are fully separate.
+- Phone-style live preview, optional image, Arabic/English text and action button.
+- Real destination validation before send.
+- Audience, schedule, expiration and active-state controls.
+- Sent, read, click and read-rate analytics.
+- Edit, copy, start/stop, renew and soft archive actions.
+- The table only reads campaigns where kind = instant_message; system/entrance messages cannot appear.
+- All V219 automatic-system-message features retained.

@@ -1,48 +1,51 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { YamoDataModule } from "@/components/yamo-data-module";
-import { YamoCommandCard } from "@/components/yamo-command-card";
-export const Route = createFileRoute("/_authenticated/notifications")({
-  component: () => (
-    <div className="space-y-5">
-      <YamoCommandCard
-        title="إنشاء رسالة فورية"
-        description="قسم مستقل للرسائل اليدوية أو الفورية؛ رسائل النظام التلقائية لها قسم منفصل"
-        rpc="admin_broadcast_yamo_notification_v2"
-        refreshSource="admin_notifications"
-        submitLabel="إرسال الآن"
-        fields={[
-          { key: "title", label: "عنوان الإشعار", required: true },
-          { key: "body", label: "النص", required: true },
-          { key: "link", label: "الرابط الداخلي" },
-          { key: "segment", label: "الفئة: all / vip / hosts", initial: "all", required: true },
-          {
-            key: "category",
-            label: "النوع: event / marketing / system",
-            initial: "event",
-            required: true,
-          },
-        ]}
-        buildArgs={(v) => ({
-          p_title: v.title,
-          p_body: v.body,
-          p_deep_link: v.link || null,
-          p_segment: v.segment,
-          p_category: v.category,
-        })}
-      />
-      <YamoDataModule
-        title="سجل الرسائل الفورية"
-        description="الرسائل اليدوية المسجلة وحالة القراءة"
-        source="admin_notifications"
-        columns={[
-          { key: "id", label: "المرجع" },
-          { key: "user_id", label: "المستلم" },
-          { key: "title_ar", label: "العنوان" },
-          { key: "body_ar", label: "النص" },
-          { key: "read_at", label: "القراءة" },
-          { key: "created_at", label: "الإرسال" },
-        ]}
-      />
-    </div>
-  ),
-});
+import { useMemo, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Archive, BellRing, CalendarClock, CheckCircle2, Copy, Edit3, Eye, ImagePlus, Loader2, MousePointerClick, Pause, Play, RefreshCw, Search, Send, Upload, Users, XCircle } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { uploadYamoCampaignMedia, yamoRowsNewest, yamoRpc } from "@/lib/yamo-admin";
+
+type Row=Record<string,unknown>;
+type Lookup={found:boolean;title?:string;subtitle?:string;image_url?:string;status?:string;message?:string};
+type Draft={titleAr:string;titleEn:string;bodyAr:string;bodyEn:string;imageUrl:string;destinationType:string;destinationValue:string;segment:string;buttonAr:string;buttonEn:string;scheduledAt:string;endsAt:string;enabled:boolean};
+const empty:Draft={titleAr:"",titleEn:"",bodyAr:"",bodyEn:"",imageUrl:"",destinationType:"page",destinationValue:"messages",segment:"all",buttonAr:"عرض الآن",buttonEn:"View now",scheduledAt:"",endsAt:"",enabled:true};
+const destinations=[["page","صفحة داخل التطبيق"],["room","غرفة"],["event","حدث"],["activity","فعالية"],["user","مستخدم"],["agency","وكالة"]];
+const segments=[["all","كل المستخدمين"],["male","الذكور"],["female","الإناث"],["vip","مستخدمو VIP"],["hosts","المضيفون"]];
+const local=(v:unknown)=>v?new Date(String(v)).toISOString().slice(0,16):"";
+const fromRow=(r:Row):Draft=>({titleAr:String(r.title_ar??""),titleEn:String(r.title_en??""),bodyAr:String(r.body_ar??""),bodyEn:String(r.body_en??""),imageUrl:String(r.image_url??""),destinationType:String(r.destination_type??"page"),destinationValue:String(r.destination_value??"messages"),segment:String(r.segment??"all"),buttonAr:String(r.button_ar??""),buttonEn:String(r.button_en??""),scheduledAt:local(r.scheduled_at),endsAt:local(r.ends_at),enabled:r.enabled===true});
+const labelOf=(items:string[][],v:string)=>items.find(x=>x[0]===v)?.[1]??v;
+
+function InstantMessages(){
+ const qc=useQueryClient();const [draft,setDraft]=useState<Draft>(empty);const [editing,setEditing]=useState<string|null>(null);const [lookup,setLookup]=useState<Lookup|null>(null);const [looking,setLooking]=useState(false);const [uploading,setUploading]=useState(false);const [filter,setFilter]=useState("all");const [search,setSearch]=useState("");
+ const messages=useQuery({queryKey:["yamo-admin","admin_instant_message_campaigns"],queryFn:()=>yamoRowsNewest("admin_instant_message_campaigns",200)});
+ const rows=useMemo(()=>(messages.data??[]).filter(r=>(filter==="all"||r.lifecycle_status===filter)&&(!search||`${r.title_ar} ${r.body_ar} ${r.destination_value}`.toLowerCase().includes(search.toLowerCase()))),[messages.data,filter,search]);
+ const stats=useMemo(()=>{const r=messages.data??[];const sent=r.reduce((n,x)=>n+Number(x.sent_count??0),0),read=r.reduce((n,x)=>n+Number(x.read_count??0),0);return{total:r.length,sent,read,clicks:r.reduce((n,x)=>n+Number(x.click_count??0),0),rate:sent?read*100/sent:0}},[messages.data]);
+ const set=<K extends keyof Draft>(k:K,v:Draft[K])=>{setDraft(o=>({...o,[k]:v}));if(k==="destinationType"||k==="destinationValue")setLookup(null)};
+ const args={p_kind:"instant_message",p_title_ar:draft.titleAr,p_title_en:draft.titleEn||null,p_body_ar:draft.bodyAr,p_body_en:draft.bodyEn||null,p_image_url:draft.imageUrl||null,p_destination_type:draft.destinationType,p_destination_value:draft.destinationValue||null,p_segment:draft.segment,p_placement:null,p_button_ar:draft.buttonAr||null,p_button_en:draft.buttonEn||null,p_scheduled_at:draft.scheduledAt?new Date(draft.scheduledAt).toISOString():null,p_ends_at:draft.endsAt?new Date(draft.endsAt).toISOString():null,p_enabled:draft.enabled,p_content_mode:draft.imageUrl?"image_text":"image_text"};
+ const payload={title_ar:args.p_title_ar,title_en:args.p_title_en,body_ar:args.p_body_ar,body_en:args.p_body_en,image_url:args.p_image_url,destination_type:args.p_destination_type,destination_value:args.p_destination_value,segment:args.p_segment,placement:null,button_ar:args.p_button_ar,button_en:args.p_button_en,scheduled_at:args.p_scheduled_at??new Date().toISOString(),ends_at:args.p_ends_at,enabled:args.p_enabled,content_mode:args.p_content_mode};
+ const refresh=()=>qc.invalidateQueries({queryKey:["yamo-admin","admin_instant_message_campaigns"]});
+ const save=useMutation({mutationFn:()=>editing?yamoRpc("admin_update_yamo_campaign",{p_id:editing,p_payload:payload}):yamoRpc("admin_save_yamo_campaign",args),onSuccess:async()=>{toast.success(editing?"تم حفظ التعديلات":"تم إرسال الرسالة الفورية");setEditing(null);setDraft(empty);setLookup(null);await refresh()},onError:(e:Error)=>toast.error(e.message)});
+ const findDestination=async()=>{setLooking(true);try{const x=await yamoRpc<Lookup>("admin_lookup_yamo_campaign_destination",{p_type:draft.destinationType,p_value:draft.destinationValue});setLookup(x);x.found?toast.success("تم العثور على الوجهة"):toast.error(x.message??"الوجهة غير موجودة")}catch(e){toast.error(e instanceof Error?e.message:"تعذر البحث")}finally{setLooking(false)}};
+ const upload=async(f?:File)=>{if(!f)return;setUploading(true);try{set("imageUrl",await uploadYamoCampaignMedia(f));toast.success("تم رفع الصورة")}catch(e){toast.error(e instanceof Error?e.message:"تعذر رفع الصورة")}finally{setUploading(false)}};
+ const state=async(r:Row,archive=false)=>{if(archive&&!confirm("نقل الرسالة للأرشيف مع الاحتفاظ بالسجل؟"))return;try{await yamoRpc("admin_set_yamo_campaign_state",{p_id:r.id,p_enabled:archive?null:!r.enabled,p_delete:archive});toast.success(archive?"تمت الأرشفة":"تم تحديث الحالة");await refresh()}catch(e){toast.error(e instanceof Error?e.message:"تعذر التحديث")}};
+ const renew=async(r:Row)=>{const a=prompt("مدة التجديد بالأيام: 1 أو 3 أو 7 أو 30، أو أي عدد", "7");if(!a)return;const d=Number(a);if(!Number.isInteger(d)||d<1){toast.error("اكتب عدد أيام صحيح");return}try{await yamoRpc("admin_renew_yamo_campaign",{p_id:r.id,p_days:d,p_ends_at:null});toast.success(`تم التجديد ${d.toLocaleString("en-US")} يوم`);await refresh()}catch(e){toast.error(e instanceof Error?e.message:"تعذر التجديد")}};
+ const edit=(r:Row,copy=false)=>{setDraft(fromRow(r));setEditing(copy?null:String(r.id));setLookup(null);scrollTo({top:0,behavior:"smooth"});toast.success(copy?"تم تحميل نسخة جديدة":"تم تحميل الرسالة للتعديل")};
+ return <div className="space-y-5" dir="rtl">
+  <div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-3xl font-black">إدارة الرسائل الفورية</h1><p className="text-muted-foreground">الرسائل اليدوية والمجدولة فقط — رسائل النظام التلقائية في قسم منفصل</p></div><Button onClick={()=>{setEditing(null);setDraft(empty);setLookup(null);scrollTo({top:0,behavior:"smooth"})}} className="bg-gradient-to-l from-orange-500 to-violet-600 text-white shadow-lg"><BellRing className="ml-2"/>إنشاء رسالة جديدة</Button></div>
+  <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"><Stat icon={BellRing} label="إجمالي الرسائل" value={stats.total}/><Stat icon={Send} label="تم الإرسال" value={stats.sent}/><Stat icon={Eye} label="تمت القراءة" value={stats.read}/><Stat icon={MousePointerClick} label="الضغطات" value={stats.clicks}/><Stat icon={CheckCircle2} label="نسبة القراءة" value={stats.rate} suffix="%"/></div>
+  <Card className="overflow-hidden border-violet-500/20 shadow-xl"><CardHeader className="bg-gradient-to-l from-violet-500/10 to-orange-500/5"><CardTitle>{editing?"تعديل الرسالة الفورية":"إنشاء رسالة فورية"}</CardTitle><CardDescription>اكتب الرسالة وحدد جمهورها ووجهتها، وشاهد شكلها قبل الإرسال.</CardDescription></CardHeader><CardContent className="grid gap-6 p-5 xl:grid-cols-[1.15fr_.85fr]"><div className="space-y-4"><Title n="1" text="المحتوى"/><Field label="عنوان الرسالة"><Input value={draft.titleAr} onChange={e=>set("titleAr",e.target.value)} placeholder="مثال: مرحبًا بك في Yamo Chat"/></Field><Field label="النص"><textarea value={draft.bodyAr} onChange={e=>set("bodyAr",e.target.value)} className="min-h-28 w-full rounded-xl border bg-background p-3" placeholder="اكتب نص الرسالة..."/></Field><div className="grid gap-3 sm:grid-cols-2"><Field label="العنوان الإنجليزي"><Input value={draft.titleEn} onChange={e=>set("titleEn",e.target.value)}/></Field><Field label="نص الزر"><Input value={draft.buttonAr} onChange={e=>set("buttonAr",e.target.value)}/></Field></div><Field label="صورة اختيارية"><label className="flex cursor-pointer justify-center gap-2 rounded-xl border-2 border-dashed border-violet-400/30 bg-violet-500/5 p-4 font-bold text-violet-600"><input type="file" accept="image/*" className="hidden" onChange={e=>upload(e.target.files?.[0])}/>{uploading?<Loader2 className="animate-spin"/>:<Upload/>}{uploading?"جاري الرفع":"رفع صورة"}</label><Input className="mt-2" value={draft.imageUrl} onChange={e=>set("imageUrl",e.target.value)} dir="ltr" placeholder="أو رابط الصورة"/></Field><Title n="2" text="الجمهور والوجهة"/><div className="grid gap-3 sm:grid-cols-2"><Field label="الجمهور"><Select value={draft.segment} onChange={v=>set("segment",v)} options={segments}/></Field><Field label="نوع الوجهة"><Select value={draft.destinationType} onChange={v=>set("destinationType",v)} options={destinations}/></Field></div><Field label={draft.destinationType==="page"?"اسم الصفحة":"ID الوجهة"}><div className="flex gap-2"><Input value={draft.destinationValue} onChange={e=>set("destinationValue",e.target.value)} dir="ltr"/><Button variant="outline" disabled={looking||!draft.destinationValue} onClick={findDestination}>{looking?<Loader2 className="ml-1 animate-spin"/>:<Search className="ml-1"/>}تحقق</Button></div></Field>{lookup&&<div className={`flex items-center gap-3 rounded-xl border p-3 ${lookup.found?"border-emerald-400 bg-emerald-500/5":"border-red-400 bg-red-500/5"}`}>{lookup.found?<CheckCircle2 className="text-emerald-600"/>:<XCircle className="text-red-600"/>}{lookup.image_url&&<img src={lookup.image_url} className="h-12 w-12 rounded-xl object-cover"/>}<div><b>{lookup.title??lookup.message}</b><p className="text-xs text-muted-foreground">{lookup.subtitle} {lookup.status&&`• ${lookup.status}`}</p></div></div>}<Title n="3" text="الجدولة"/><div className="grid gap-3 sm:grid-cols-2"><Field label="وقت الإرسال — فارغ يعني الآن"><Input type="datetime-local" value={draft.scheduledAt} onChange={e=>set("scheduledAt",e.target.value)}/></Field><Field label="تاريخ الانتهاء"><Input type="datetime-local" value={draft.endsAt} onChange={e=>set("endsAt",e.target.value)}/></Field></div><label className="flex items-center gap-2 rounded-xl border p-3 font-bold"><input type="checkbox" checked={draft.enabled} onChange={e=>set("enabled",e.target.checked)}/>تشغيل الرسالة بعد الحفظ</label><div className="flex gap-2"><Button disabled={save.isPending||!lookup?.found||(!draft.titleAr&&!draft.bodyAr)} onClick={()=>save.mutate()} className="h-12 flex-1 bg-gradient-to-l from-orange-500 to-violet-600 text-white shadow-lg">{save.isPending?<Loader2 className="ml-2 animate-spin"/>:<Send className="ml-2"/>}{editing?"حفظ التعديلات":draft.scheduledAt?"جدولة الرسالة":"إرسال الآن"}</Button>{editing&&<Button variant="outline" onClick={()=>{setEditing(null);setDraft(empty);setLookup(null)}}>إلغاء</Button>}</div>{!lookup?.found&&<p className="text-center text-xs font-bold text-orange-600">تحقق من الوجهة أولًا لتفعيل الإرسال.</p>}</div>
+   <div className="space-y-4"><Title n="4" text="المعاينة المباشرة"/><div className="mx-auto max-w-sm rounded-[2.5rem] border-[8px] border-slate-900 bg-slate-900 p-1 shadow-2xl"><div className="min-h-[590px] overflow-hidden rounded-[1.9rem] bg-white text-slate-900"><div className="flex items-center justify-between px-5 py-3 text-xs"><span>12:30</span><span>Yamo Chat</span></div><div className="mx-3 rounded-2xl bg-slate-50 p-3 shadow"><div className="flex gap-3"><div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-violet-600 text-white"><BellRing/></div><div><b>{draft.titleAr||"عنوان الرسالة"}</b><p className="mt-1 text-sm text-slate-500">الآن</p></div></div>{draft.imageUrl?<img src={draft.imageUrl} className="mt-3 aspect-[1029/540] w-full rounded-xl object-cover"/>:<div className="mt-3 grid aspect-[1029/540] place-items-center rounded-xl bg-gradient-to-br from-violet-100 to-orange-100 text-violet-400"><ImagePlus/></div>}<p className="mt-3 text-sm">{draft.bodyAr||"نص الرسالة سيظهر هنا كما سيراه المستخدم."}</p><button className="mt-4 w-full rounded-xl bg-gradient-to-l from-orange-500 to-violet-600 py-3 font-bold text-white">{draft.buttonAr||"عرض الآن"}</button></div></div></div><Card><CardHeader><CardTitle className="text-lg">الجمهور المستهدف</CardTitle></CardHeader><CardContent><div className="flex items-center justify-between rounded-xl bg-muted/40 p-4"><div><b>{labelOf(segments,draft.segment)}</b><p className="text-xs text-muted-foreground">سيظهر العدد الحقيقي بعد الإرسال</p></div><Users className="text-violet-600"/></div></CardContent></Card></div></CardContent></Card>
+  <Card><CardHeader><CardTitle>سجل الرسائل الفورية</CardTitle><CardDescription>هذا السجل لا يعرض رسائل النظام أو الدخلات التلقائية.</CardDescription></CardHeader><CardContent><div className="mb-4 flex flex-wrap gap-3"><div className="relative min-w-64 flex-1"><Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground"/><Input className="pr-9" value={search} onChange={e=>setSearch(e.target.value)} placeholder="بحث في الرسائل..."/></div><Select value={filter} onChange={setFilter} options={[["all","كل الحالات"],["active","نشطة"],["scheduled","مجدولة"],["stopped","متوقفة"],["expired","منتهية"],["archived","مؤرشفة"]]}/></div><div className="overflow-x-auto"><table className="w-full min-w-[1450px] text-sm"><thead><tr className="border-b text-muted-foreground">{["الرسالة","الجمهور","الوجهة","وقت الإرسال","المستلمون","القراءة","الضغطات","الحالة","الإجراءات"].map(x=><th key={x} className="p-3 text-right">{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr key={String(r.id)} className="border-b"><td className="p-3"><div className="flex items-center gap-2">{r.image_url&&<img src={String(r.image_url)} className="h-10 w-10 rounded-lg object-cover"/>}<div><b>{String(r.title_ar)}</b><p className="max-w-64 truncate text-xs text-muted-foreground">{String(r.body_ar??"")}</p></div></div></td><td className="p-3">{labelOf(segments,String(r.segment))}</td><td className="p-3">{labelOf(destinations,String(r.destination_type))}<p className="font-mono text-xs">{String(r.destination_value??"")}</p></td><td className="p-3 font-mono text-xs">{new Date(String(r.scheduled_at)).toLocaleString("en-GB")}</td><td className="p-3 font-mono">{Number(r.sent_count??0).toLocaleString("en-US")}</td><td className="p-3"><b>{Number(r.read_count??0).toLocaleString("en-US")}</b><p className="text-xs text-muted-foreground">{Number(r.read_rate??0).toLocaleString("en-US")}%</p></td><td className="p-3 font-mono">{Number(r.click_count??0).toLocaleString("en-US")}</td><td className="p-3"><Status value={String(r.lifecycle_status)}/></td><td className="p-3"><div className="flex flex-wrap gap-1"><Action icon={Edit3} label="تعديل" onClick={()=>edit(r)}/><Action icon={Copy} label="نسخ" onClick={()=>edit(r,true)}/><Action icon={RefreshCw} label="تجديد" onClick={()=>renew(r)}/><Action icon={r.enabled?Pause:Play} label={r.enabled?"إيقاف":"تشغيل"} onClick={()=>state(r)}/><Action icon={Archive} label="أرشفة" danger onClick={()=>state(r,true)}/></div></td></tr>)}</tbody></table></div></CardContent></Card>
+ </div>
+}
+function Field({label,children}:{label:string;children:ReactNode}){return <div className="space-y-2"><Label>{label}</Label>{children}</div>}
+function Title({n,text}:{n:string;text:string}){return <div className="flex items-center gap-2"><span className="grid h-7 w-7 place-items-center rounded-lg bg-violet-600 text-xs font-black text-white">{n}</span><b>{text}</b></div>}
+function Select({value,onChange,options}:{value:string;onChange:(v:string)=>void;options:string[][]}){return <select value={value} onChange={e=>onChange(e.target.value)} className="h-10 rounded-xl border bg-background px-3">{options.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select>}
+function Status({value}:{value:string}){const m:Record<string,[string,string]>={active:["نشطة","bg-emerald-500/10 text-emerald-600"],scheduled:["مجدولة","bg-blue-500/10 text-blue-600"],stopped:["متوقفة","bg-muted text-muted-foreground"],expired:["منتهية","bg-orange-500/10 text-orange-600"],archived:["مؤرشفة","bg-red-500/10 text-red-600"]};const [l,c]=m[value]??[value,"bg-muted"];return <span className={`rounded-full px-3 py-1 text-xs font-black ${c}`}>{l}</span>}
+function Action({icon:Icon,label,onClick,danger}:{icon:typeof Edit3;label:string;onClick:()=>void;danger?:boolean}){return <Button size="sm" variant="outline" className={danger?"text-red-600":""} onClick={onClick}><Icon className="ml-1 h-3.5 w-3.5"/>{label}</Button>}
+function Stat({icon:Icon,label,value,suffix=""}:{icon:typeof BellRing;label:string;value:number;suffix?:string}){return <Card><CardContent className="flex items-center gap-3 p-4"><div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-orange-500 to-violet-600 text-white"><Icon className="h-5 w-5"/></div><div><p className="text-xs text-muted-foreground">{label}</p><p className="text-xl font-black">{value.toLocaleString("en-US",{maximumFractionDigits:1})}{suffix}</p></div></CardContent></Card>}
+export const Route=createFileRoute("/_authenticated/notifications")({component:InstantMessages});
