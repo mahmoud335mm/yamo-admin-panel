@@ -1,0 +1,9 @@
+Yamo Admin V219 — Automatic System Messages
+
+- Banners, instant messages and automatic system messages are three separate sections.
+- 36 ready production templates covering account, agency, targets, income, withdrawal, gifts, VIP, levels, tasks, rewards, relationships, events, moderation, rooms and balance.
+- Server event engine with variable rendering, idempotency, cooldown and automatic retries.
+- Real delivery log: queued, sent, delivered, read, clicked and failed.
+- Arabic/English text, optional image, deep link, push/in-app channels.
+- Test any template on one legacy user ID before enabling it.
+- Existing V218 campaign lifecycle and every earlier feature retained.

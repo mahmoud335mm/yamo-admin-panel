@@ -1,0 +1,7 @@
+Yamo Admin V215 — Official Brand Identity
+
+- New approved Yamo orbit-and-stars logo in the sidebar.
+- New approved Yamo logo on the admin sign-in screen.
+- New multi-size favicon for browser tabs.
+- New 180px Apple touch icon.
+- All V214 Arabic/English language, pricing, messaging and permissions features are retained.

@@ -1,0 +1,9 @@
+Yamo Admin V213 — Premium English Pricing UI
+
+- Complete V211 + V212 messages management page included.
+- Pricing cards and settings use English labels.
+- All numbers and dates use English digits.
+- Native browser number arrows removed.
+- Premium illuminated plus/minus controls added.
+- Glowing tabs, cards, save actions and hover states.
+- Corrected V212.1 Supabase SQL included.

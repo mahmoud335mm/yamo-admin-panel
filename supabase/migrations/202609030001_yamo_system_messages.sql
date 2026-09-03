@@ -226,7 +226,7 @@ returns integer language plpgsql security definer set search_path=public,auth,pg
  if to_regclass('public.host_targets') is not null and to_regclass('public.hosts') is not null then
    for r in execute $q$select h.user_id,t.id,t.period_year,t.period_month,greatest(coalesce(t.target_coins,0),coalesce(t.target_hours,0)) target_value,case when coalesce(t.target_coins,0)>0 then coalesce(t.achieved_coins,0) else coalesce(t.achieved_hours,0) end current_value,(make_date(t.period_year,t.period_month,1)+interval '1 month') period_end from public.host_targets t join public.hosts h on h.id=t.host_id where t.status='active'$q$ loop
      if r.period_end<=now() then key:='target.missed';elsif r.period_end<=now()+interval '2 days' then key:='target.expiring';else key:=null;end if;
-     if key is not null and public.emit_yamo_system_event(key,r.user_id,jsonb_build_object('current_value',r.current_value,'target_value',r.target_value,'remaining_value',greatest(r.target_value-r.current_value,0),'remaining_time',case when key='target.expiring' then '48 ساعة' else '0'),key||':'||r.id::text||':'||r.period_end::date::text) is not null then n:=n+1;end if;
+     if key is not null and public.emit_yamo_system_event(key,r.user_id,jsonb_build_object('current_value',r.current_value,'target_value',r.target_value,'remaining_value',greatest(r.target_value-r.current_value,0),'remaining_time',case when key='target.expiring' then '48 ساعة' else '0' end),key||':'||r.id::text||':'||r.period_end::date::text) is not null then n:=n+1;end if;
    end loop;
  end if;
  n:=n+public.retry_failed_yamo_system_messages(100);return n;
