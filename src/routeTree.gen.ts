@@ -17,6 +17,7 @@ import { Route as AuthenticatedWalletAdjustmentsRouteImport } from './routes/_au
 import { Route as AuthenticatedVipLevelsRouteImport } from './routes/_authenticated/vip-levels'
 import { Route as AuthenticatedVerificationsRouteImport } from './routes/_authenticated/verifications'
 import { Route as AuthenticatedUsersRouteImport } from './routes/_authenticated/users'
+import { Route as AuthenticatedSystemMessagesRouteImport } from './routes/_authenticated/system-messages'
 import { Route as AuthenticatedSupportTicketsRouteImport } from './routes/_authenticated/support-tickets'
 import { Route as AuthenticatedStoreRouteImport } from './routes/_authenticated/store'
 import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
@@ -29,7 +30,6 @@ import { Route as AuthenticatedPearlPurchasesRouteImport } from './routes/_authe
 import { Route as AuthenticatedPearlCoinExchangesRouteImport } from './routes/_authenticated/pearl-coin-exchanges'
 import { Route as AuthenticatedOperationsRouteImport } from './routes/_authenticated/operations'
 import { Route as AuthenticatedNotificationsRouteImport } from './routes/_authenticated/notifications'
-import { Route as AuthenticatedSystemMessagesRouteImport } from './routes/_authenticated/system-messages'
 import { Route as AuthenticatedModerationRouteImport } from './routes/_authenticated/moderation'
 import { Route as AuthenticatedMessagesRouteImport } from './routes/_authenticated/messages'
 import { Route as AuthenticatedInventoryRouteImport } from './routes/_authenticated/inventory'
@@ -123,6 +123,12 @@ const AuthenticatedUsersRoute = AuthenticatedUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedSystemMessagesRoute =
+  AuthenticatedSystemMessagesRouteImport.update({
+    id: '/system-messages',
+    path: '/system-messages',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedSupportTicketsRoute =
   AuthenticatedSupportTicketsRouteImport.update({
     id: '/support-tickets',
@@ -187,12 +193,6 @@ const AuthenticatedNotificationsRoute =
   AuthenticatedNotificationsRouteImport.update({
     id: '/notifications',
     path: '/notifications',
-    getParentRoute: () => AuthenticatedRouteRoute,
-  } as any)
-const AuthenticatedSystemMessagesRoute =
-  AuthenticatedSystemMessagesRouteImport.update({
-    id: '/system-messages',
-    path: '/system-messages',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
 const AuthenticatedModerationRoute = AuthenticatedModerationRouteImport.update({
@@ -505,7 +505,6 @@ export interface FileRoutesByFullPath {
   '/messages': typeof AuthenticatedMessagesRoute
   '/moderation': typeof AuthenticatedModerationRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
-  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/operations': typeof AuthenticatedOperationsRoute
   '/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -517,6 +516,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof AuthenticatedSettingsRoute
   '/store': typeof AuthenticatedStoreRoute
   '/support-tickets': typeof AuthenticatedSupportTicketsRoute
+  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/users': typeof AuthenticatedUsersRouteWithChildren
   '/verifications': typeof AuthenticatedVerificationsRoute
   '/vip-levels': typeof AuthenticatedVipLevelsRoute
@@ -576,7 +576,6 @@ export interface FileRoutesByTo {
   '/messages': typeof AuthenticatedMessagesRoute
   '/moderation': typeof AuthenticatedModerationRoute
   '/notifications': typeof AuthenticatedNotificationsRoute
-  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/operations': typeof AuthenticatedOperationsRoute
   '/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -588,6 +587,7 @@ export interface FileRoutesByTo {
   '/settings': typeof AuthenticatedSettingsRoute
   '/store': typeof AuthenticatedStoreRoute
   '/support-tickets': typeof AuthenticatedSupportTicketsRoute
+  '/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/users': typeof AuthenticatedUsersRouteWithChildren
   '/verifications': typeof AuthenticatedVerificationsRoute
   '/vip-levels': typeof AuthenticatedVipLevelsRoute
@@ -650,7 +650,6 @@ export interface FileRoutesById {
   '/_authenticated/messages': typeof AuthenticatedMessagesRoute
   '/_authenticated/moderation': typeof AuthenticatedModerationRoute
   '/_authenticated/notifications': typeof AuthenticatedNotificationsRoute
-  '/_authenticated/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/_authenticated/operations': typeof AuthenticatedOperationsRoute
   '/_authenticated/pearl-coin-exchanges': typeof AuthenticatedPearlCoinExchangesRoute
   '/_authenticated/pearl-purchases': typeof AuthenticatedPearlPurchasesRoute
@@ -662,6 +661,7 @@ export interface FileRoutesById {
   '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/_authenticated/store': typeof AuthenticatedStoreRoute
   '/_authenticated/support-tickets': typeof AuthenticatedSupportTicketsRoute
+  '/_authenticated/system-messages': typeof AuthenticatedSystemMessagesRoute
   '/_authenticated/users': typeof AuthenticatedUsersRouteWithChildren
   '/_authenticated/verifications': typeof AuthenticatedVerificationsRoute
   '/_authenticated/vip-levels': typeof AuthenticatedVipLevelsRoute
@@ -724,7 +724,6 @@ export interface FileRouteTypes {
     | '/messages'
     | '/moderation'
     | '/notifications'
-    | '/system-messages'
     | '/operations'
     | '/pearl-coin-exchanges'
     | '/pearl-purchases'
@@ -736,6 +735,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/store'
     | '/support-tickets'
+    | '/system-messages'
     | '/users'
     | '/verifications'
     | '/vip-levels'
@@ -795,7 +795,6 @@ export interface FileRouteTypes {
     | '/messages'
     | '/moderation'
     | '/notifications'
-    | '/system-messages'
     | '/operations'
     | '/pearl-coin-exchanges'
     | '/pearl-purchases'
@@ -807,6 +806,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/store'
     | '/support-tickets'
+    | '/system-messages'
     | '/users'
     | '/verifications'
     | '/vip-levels'
@@ -868,7 +868,6 @@ export interface FileRouteTypes {
     | '/_authenticated/messages'
     | '/_authenticated/moderation'
     | '/_authenticated/notifications'
-    | '/_authenticated/system-messages'
     | '/_authenticated/operations'
     | '/_authenticated/pearl-coin-exchanges'
     | '/_authenticated/pearl-purchases'
@@ -880,6 +879,7 @@ export interface FileRouteTypes {
     | '/_authenticated/settings'
     | '/_authenticated/store'
     | '/_authenticated/support-tickets'
+    | '/_authenticated/system-messages'
     | '/_authenticated/users'
     | '/_authenticated/verifications'
     | '/_authenticated/vip-levels'
@@ -974,6 +974,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedUsersRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
+    '/_authenticated/system-messages': {
+      id: '/_authenticated/system-messages'
+      path: '/system-messages'
+      fullPath: '/system-messages'
+      preLoaderRoute: typeof AuthenticatedSystemMessagesRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
     '/_authenticated/support-tickets': {
       id: '/_authenticated/support-tickets'
       path: '/support-tickets'
@@ -1056,13 +1063,6 @@ declare module '@tanstack/react-router' {
       path: '/notifications'
       fullPath: '/notifications'
       preLoaderRoute: typeof AuthenticatedNotificationsRouteImport
-      parentRoute: typeof AuthenticatedRouteRoute
-    }
-    '/_authenticated/system-messages': {
-      id: '/_authenticated/system-messages'
-      path: '/system-messages'
-      fullPath: '/system-messages'
-      preLoaderRoute: typeof AuthenticatedSystemMessagesRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/moderation': {
@@ -1603,7 +1603,6 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedMessagesRoute: typeof AuthenticatedMessagesRoute
   AuthenticatedModerationRoute: typeof AuthenticatedModerationRoute
   AuthenticatedNotificationsRoute: typeof AuthenticatedNotificationsRoute
-  AuthenticatedSystemMessagesRoute: typeof AuthenticatedSystemMessagesRoute
   AuthenticatedOperationsRoute: typeof AuthenticatedOperationsRoute
   AuthenticatedPearlCoinExchangesRoute: typeof AuthenticatedPearlCoinExchangesRoute
   AuthenticatedPearlPurchasesRoute: typeof AuthenticatedPearlPurchasesRoute
@@ -1615,6 +1614,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedStoreRoute: typeof AuthenticatedStoreRoute
   AuthenticatedSupportTicketsRoute: typeof AuthenticatedSupportTicketsRoute
+  AuthenticatedSystemMessagesRoute: typeof AuthenticatedSystemMessagesRoute
   AuthenticatedUsersRoute: typeof AuthenticatedUsersRouteWithChildren
   AuthenticatedVerificationsRoute: typeof AuthenticatedVerificationsRoute
   AuthenticatedVipLevelsRoute: typeof AuthenticatedVipLevelsRoute
@@ -1657,7 +1657,6 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedMessagesRoute: AuthenticatedMessagesRoute,
   AuthenticatedModerationRoute: AuthenticatedModerationRoute,
   AuthenticatedNotificationsRoute: AuthenticatedNotificationsRoute,
-  AuthenticatedSystemMessagesRoute: AuthenticatedSystemMessagesRoute,
   AuthenticatedOperationsRoute: AuthenticatedOperationsRoute,
   AuthenticatedPearlCoinExchangesRoute: AuthenticatedPearlCoinExchangesRoute,
   AuthenticatedPearlPurchasesRoute: AuthenticatedPearlPurchasesRoute,
@@ -1669,6 +1668,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedStoreRoute: AuthenticatedStoreRoute,
   AuthenticatedSupportTicketsRoute: AuthenticatedSupportTicketsRoute,
+  AuthenticatedSystemMessagesRoute: AuthenticatedSystemMessagesRoute,
   AuthenticatedUsersRoute: AuthenticatedUsersRouteWithChildren,
   AuthenticatedVerificationsRoute: AuthenticatedVerificationsRoute,
   AuthenticatedVipLevelsRoute: AuthenticatedVipLevelsRoute,
