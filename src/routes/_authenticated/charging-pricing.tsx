@@ -41,7 +41,7 @@ import { fmtNum } from "@/lib/charging-utils";
 export const Route = createFileRoute("/_authenticated/charging-pricing")({
   component: () => (
     <PermissionGuard permission="charging_pricing.read">
-      <Page />
+      <ChargingPricingPanel />
     </PermissionGuard>
   ),
 });
@@ -78,7 +78,7 @@ const COUNTRIES = worldCountries
   }))
   .sort((a, b) => a.name.localeCompare(b.name, "ar"));
 
-function Page() {
+export function ChargingPricingPanel() {
   const packs = useQuery({
     queryKey: ["charging_packages"],
     queryFn: async () => {

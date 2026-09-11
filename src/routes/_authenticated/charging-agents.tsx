@@ -39,12 +39,12 @@ import { AGENT_ROLE_LABELS, fmtDate } from "@/lib/charging-utils";
 export const Route = createFileRoute("/_authenticated/charging-agents")({
   component: () => (
     <PermissionGuard permission="charging_agents.read">
-      <Page />
+      <ChargingAgentsPanel />
     </PermissionGuard>
   ),
 });
 
-function Page() {
+export function ChargingAgentsPanel() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(0);

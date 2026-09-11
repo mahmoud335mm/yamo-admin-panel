@@ -29,7 +29,7 @@ import { fmtDate, fmtNum } from "@/lib/charging-utils";
 export const Route = createFileRoute("/_authenticated/charging-ledger")({
   component: () => (
     <PermissionGuard permission="charging_agencies.read">
-      <Page />
+      <ChargingLedgerPanel />
     </PermissionGuard>
   ),
 });
@@ -54,7 +54,7 @@ const LABELS: Record<string, string> = {
   paid_call: "مكالمات مدفوعة",
   wallet_activity: "حركة محفظة",
 };
-function Page() {
+export function ChargingLedgerPanel() {
   const [q, setQ] = useState(""),
     [category, setCategory] = useState("all"),
     [asset, setAsset] = useState("all");

@@ -50,6 +50,11 @@ import {
 import { toast } from "sonner";
 import { CHARGING_AGENCY_STATUS, fmtDate, fmtNum } from "@/lib/charging-utils";
 import worldCountries from "world-countries";
+import { ChargingAgentsPanel } from "./charging-agents";
+import { ChargingPricingPanel } from "./charging-pricing";
+import { ChargingCoinTransfersPanel } from "./charging-coin-transfers";
+import { ChargingPearlTransfersPanel } from "./charging-pearl-transfers";
+import { ChargingLedgerPanel } from "./charging-ledger";
 
 const COUNTRY_OPTIONS = worldCountries
   .filter((country) => country.status === "officially-assigned")
@@ -84,6 +89,7 @@ type Stat = {
 };
 
 function Page() {
+  const [section, setSection] = useState("agencies");
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [country, setCountry] = useState("all");
@@ -339,214 +345,233 @@ function Page() {
         />
       </div>
       <div className="flex flex-wrap gap-2">
-        <Nav to="/charging-agencies" label="الوكالات والوكلاء" active />
-        <Nav to="/charging-pricing" label="الأسعار والباقات" />
-        <Nav to="/charging-coin-transfers" label="شحن الكوينز" />
-        <Nav to="/charging-pearl-transfers" label="اللؤلؤ والتبديل" />
-        <Nav to="/charging-ledger" label="السجل المالي الشامل" />
+        {[
+          ["agencies", "الوكالات"],
+          ["agents", "الوكلاء"],
+          ["pricing", "الأسعار والباقات"],
+          ["coins", "شحن الكوينز"],
+          ["pearls", "اللؤلؤ والتبديل"],
+          ["ledger", "السجل المالي الشامل"],
+        ].map(([key, label]) => (
+          <Button
+            key={key}
+            size="sm"
+            variant={section === key ? "default" : "outline"}
+            onClick={() => setSection(key)}
+          >
+            {label}
+          </Button>
+        ))}
       </div>
-      <Card className="overflow-hidden">
-        <CardHeader className="border-b bg-muted/20">
-          <div className="flex flex-col gap-3 xl:flex-row">
-            <div className="relative flex-1">
-              <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="ابحث باسم الوكالة أو الكود أو الدولة…"
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
+      {section === "agencies" && (
+        <Card className="overflow-hidden">
+          <CardHeader className="border-b bg-muted/20">
+            <div className="flex flex-col gap-3 xl:flex-row">
+              <div className="relative flex-1">
+                <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="ابحث باسم الوكالة أو الكود أو الدولة…"
+                  value={q}
+                  onChange={(e) => {
+                    setQ(e.target.value);
+                    setPage(0);
+                  }}
+                  className="pr-9"
+                />
+              </div>
+              <Select
+                value={status}
+                onValueChange={(v) => {
+                  setStatus(v);
                   setPage(0);
                 }}
-                className="pr-9"
-              />
+              >
+                <SelectTrigger className="xl:w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الحالات</SelectItem>
+                  {Object.entries(CHARGING_AGENCY_STATUS).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={country}
+                onValueChange={(v) => {
+                  setCountry(v);
+                  setPage(0);
+                }}
+              >
+                <SelectTrigger className="xl:w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">كل الدول</SelectItem>
+                  {(countries.data ?? []).map((x) => (
+                    <SelectItem key={x} value={x}>
+                      {x}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Select
-              value={status}
-              onValueChange={(v) => {
-                setStatus(v);
-                setPage(0);
-              }}
-            >
-              <SelectTrigger className="xl:w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل الحالات</SelectItem>
-                {Object.entries(CHARGING_AGENCY_STATUS).map(([k, v]) => (
-                  <SelectItem key={k} value={k}>
-                    {v}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={country}
-              onValueChange={(v) => {
-                setCountry(v);
-                setPage(0);
-              }}
-            >
-              <SelectTrigger className="xl:w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">كل الدول</SelectItem>
-                {(countries.data ?? []).map((x) => (
-                  <SelectItem key={x} value={x}>
-                    {x}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {list.isLoading ? (
-            <div className="py-20">
-              <Loader2 className="mx-auto h-7 w-7 animate-spin" />
-            </div>
-          ) : list.isError ? (
-            <div className="py-20 text-center text-destructive">
-              فشل التحميل: {(list.error as Error).message}
-            </div>
-          ) : !list.data!.rows.length ? (
-            <div className="flex flex-col items-center gap-3 py-20">
-              <Zap className="h-12 w-12 text-muted-foreground" />
-              <span>لا توجد وكالات مطابقة</span>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-muted/30">
-                      <TableHead>#</TableHead>
-                      <TableHead>الوكالة</TableHead>
-                      <TableHead>المالك / ID</TableHead>
-                      <TableHead>الكوينز</TableHead>
-                      <TableHead>اللؤلؤ</TableHead>
-                      <TableHead>حد اليوم</TableHead>
-                      <TableHead>الوكلاء</TableHead>
-                      <TableHead>الأداء</TableHead>
-                      <TableHead>الحالة</TableHead>
-                      <TableHead>آخر تحديث</TableHead>
-                      <TableHead />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {list.data!.rows.map((r, i) => (
-                      <TableRow key={r.id}>
-                        <TableCell className="font-mono" dir="ltr">
-                          {page * size + i + 1}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-3">
-                            <Avatar className="h-11 w-11 border-2 border-primary/20">
-                              <AvatarImage src={r.logo_url ?? undefined} />
-                              <AvatarFallback>{r.name.slice(0, 2)}</AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <Link
-                                to="/charging-agencies/$id"
-                                params={{ id: r.id }}
-                                className="font-bold hover:text-primary"
-                              >
-                                {r.name}
-                              </Link>
-                              <div
-                                className="font-mono text-[11px] text-muted-foreground"
-                                dir="ltr"
-                              >
-                                {r.display_id} · {r.country ?? "-"}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-8 w-8">
-                              <AvatarImage src={r.owner?.avatar_url ?? undefined} />
-                              <AvatarFallback>
-                                {r.owner?.display_name?.slice(0, 1) ?? "?"}
-                              </AvatarFallback>
-                            </Avatar>
-                            <div>
-                              <div className="text-sm">{r.owner?.display_name ?? "غير محدد"}</div>
-                              <div
-                                className="font-mono text-[11px] text-muted-foreground"
-                                dir="ltr"
-                              >
-                                {r.owner?.legacy_id ?? "-"}
-                              </div>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className="font-mono" dir="ltr">
-                          {fmtNum(r.wallet?.coins ?? 0)}
-                        </TableCell>
-                        <TableCell className="font-mono" dir="ltr">
-                          {fmtNum(r.wallet?.pearls ?? 0)}
-                        </TableCell>
-                        <TableCell className="font-mono text-xs" dir="ltr">
-                          {fmtNum(r.daily_coin_transfer_limit ?? 0)}
-                        </TableCell>
-                        <TableCell className="font-mono" dir="ltr">
-                          {r.members}
-                        </TableCell>
-                        <TableCell>
-                          <Trend value={r.trend} />
-                        </TableCell>
-                        <TableCell>
-                          <Status status={r.status} />
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {fmtDate(r.updated_at)}
-                        </TableCell>
-                        <TableCell>
-                          <Link to="/charging-agencies/$id" params={{ id: r.id }}>
-                            <Button size="icon" variant="ghost">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </Link>
-                        </TableCell>
+          </CardHeader>
+          <CardContent className="p-0">
+            {list.isLoading ? (
+              <div className="py-20">
+                <Loader2 className="mx-auto h-7 w-7 animate-spin" />
+              </div>
+            ) : list.isError ? (
+              <div className="py-20 text-center text-destructive">
+                فشل التحميل: {(list.error as Error).message}
+              </div>
+            ) : !list.data!.rows.length ? (
+              <div className="flex flex-col items-center gap-3 py-20">
+                <Zap className="h-12 w-12 text-muted-foreground" />
+                <span>لا توجد وكالات مطابقة</span>
+              </div>
+            ) : (
+              <>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow className="bg-muted/30">
+                        <TableHead>#</TableHead>
+                        <TableHead>الوكالة</TableHead>
+                        <TableHead>المالك / ID</TableHead>
+                        <TableHead>الكوينز</TableHead>
+                        <TableHead>اللؤلؤ</TableHead>
+                        <TableHead>حد اليوم</TableHead>
+                        <TableHead>الوكلاء</TableHead>
+                        <TableHead>الأداء</TableHead>
+                        <TableHead>الحالة</TableHead>
+                        <TableHead>آخر تحديث</TableHead>
+                        <TableHead />
                       </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              <div className="flex justify-between border-t p-4 text-sm">
-                <span>
-                  الإجمالي:{" "}
-                  <b className="font-mono" dir="ltr">
-                    {fmtNum(list.data!.total)}
-                  </b>
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={!page}
-                    onClick={() => setPage((x) => x - 1)}
-                  >
-                    السابق
-                  </Button>
-                  <span className="p-2 font-mono" dir="ltr">
-                    {page + 1}
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={(page + 1) * size >= list.data!.total}
-                    onClick={() => setPage((x) => x + 1)}
-                  >
-                    التالي
-                  </Button>
+                    </TableHeader>
+                    <TableBody>
+                      {list.data!.rows.map((r, i) => (
+                        <TableRow key={r.id}>
+                          <TableCell className="font-mono" dir="ltr">
+                            {page * size + i + 1}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-3">
+                              <Avatar className="h-11 w-11 border-2 border-primary/20">
+                                <AvatarImage src={r.logo_url ?? undefined} />
+                                <AvatarFallback>{r.name.slice(0, 2)}</AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <Link
+                                  to="/charging-agencies/$id"
+                                  params={{ id: r.id }}
+                                  className="font-bold hover:text-primary"
+                                >
+                                  {r.name}
+                                </Link>
+                                <div
+                                  className="font-mono text-[11px] text-muted-foreground"
+                                  dir="ltr"
+                                >
+                                  {r.display_id} · {r.country ?? "-"}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Avatar className="h-8 w-8">
+                                <AvatarImage src={r.owner?.avatar_url ?? undefined} />
+                                <AvatarFallback>
+                                  {r.owner?.display_name?.slice(0, 1) ?? "?"}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <div className="text-sm">{r.owner?.display_name ?? "غير محدد"}</div>
+                                <div
+                                  className="font-mono text-[11px] text-muted-foreground"
+                                  dir="ltr"
+                                >
+                                  {r.owner?.legacy_id ?? "-"}
+                                </div>
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-mono" dir="ltr">
+                            {fmtNum(r.wallet?.coins ?? 0)}
+                          </TableCell>
+                          <TableCell className="font-mono" dir="ltr">
+                            {fmtNum(r.wallet?.pearls ?? 0)}
+                          </TableCell>
+                          <TableCell className="font-mono text-xs" dir="ltr">
+                            {fmtNum(r.daily_coin_transfer_limit ?? 0)}
+                          </TableCell>
+                          <TableCell className="font-mono" dir="ltr">
+                            {r.members}
+                          </TableCell>
+                          <TableCell>
+                            <Trend value={r.trend} />
+                          </TableCell>
+                          <TableCell>
+                            <Status status={r.status} />
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground">
+                            {fmtDate(r.updated_at)}
+                          </TableCell>
+                          <TableCell>
+                            <Link to="/charging-agencies/$id" params={{ id: r.id }}>
+                              <Button size="icon" variant="ghost">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </Link>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
+                <div className="flex justify-between border-t p-4 text-sm">
+                  <span>
+                    الإجمالي:{" "}
+                    <b className="font-mono" dir="ltr">
+                      {fmtNum(list.data!.total)}
+                    </b>
+                  </span>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!page}
+                      onClick={() => setPage((x) => x - 1)}
+                    >
+                      السابق
+                    </Button>
+                    <span className="p-2 font-mono" dir="ltr">
+                      {page + 1}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={(page + 1) * size >= list.data!.total}
+                      onClick={() => setPage((x) => x + 1)}
+                    >
+                      التالي
+                    </Button>
+                  </div>
+                </div>
+              </>
+            )}
+          </CardContent>
+        </Card>
+      )}
+      {section === "agents" && <ChargingAgentsPanel />}
+      {section === "pricing" && <ChargingPricingPanel />}
+      {section === "coins" && <ChargingCoinTransfersPanel />}
+      {section === "pearls" && <ChargingPearlTransfersPanel />}
+      {section === "ledger" && <ChargingLedgerPanel />}
     </div>
   );
 }
