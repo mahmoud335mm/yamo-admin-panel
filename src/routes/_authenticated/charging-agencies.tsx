@@ -343,6 +343,7 @@ function Page() {
         <Nav to="/charging-pricing" label="الأسعار والباقات" />
         <Nav to="/charging-coin-transfers" label="شحن الكوينز" />
         <Nav to="/charging-pearl-transfers" label="اللؤلؤ والتبديل" />
+        <Nav to="/charging-ledger" label="السجل المالي الشامل" />
       </div>
       <Card className="overflow-hidden">
         <CardHeader className="border-b bg-muted/20">
@@ -592,6 +593,7 @@ function Nav({
     | "/charging-agents"
     | "/charging-coin-transfers"
     | "/charging-pearl-transfers"
+    | "/charging-ledger"
     | "/charging-pricing";
   label: string;
   active?: boolean;
@@ -637,14 +639,12 @@ function CreateDialog({ onDone }: { onDone: () => void }) {
   const [open, setOpen] = useState(false),
     [name, setName] = useState(""),
     [country, setCountry] = useState(""),
-    [city, setCity] = useState(""),
     [currency, setCurrency] = useState("USD"),
     [ownerQuery, setOwnerQuery] = useState(""),
     [owner, setOwner] = useState<Owner | null>(null),
     [dialCode, setDialCode] = useState("+20"),
     [commission, setCommission] = useState("0"),
-    [phone, setPhone] = useState(""),
-    [email, setEmail] = useState("");
+    [phone, setPhone] = useState("");
   const navigate = useNavigate();
   const qc = useQueryClient();
   const suggestions = useQuery({
@@ -666,12 +666,12 @@ function CreateDialog({ onDone }: { onDone: () => void }) {
       const { data, error } = await supabase.rpc("create_charging_agency", {
         _name: name.trim(),
         _country: country || null,
-        _city: city || null,
+        _city: null,
         _default_currency: currency,
         _owner_user_id: owner?.id ?? null,
         _deputy_user_id: null,
         _phone: phone ? `${dialCode}${phone.replace(/^0+/, "")}` : null,
-        _email: email || null,
+        _email: null,
       } as never);
       if (error) throw error;
       const agencyId = data as string;
@@ -756,10 +756,6 @@ function CreateDialog({ onDone }: { onDone: () => void }) {
             </div>
           </div>
           <div>
-            <Label>البريد</Label>
-            <Input dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </div>
-          <div>
             <Label>الدولة</Label>
             <Select
               value={country}
@@ -783,10 +779,6 @@ function CreateDialog({ onDone }: { onDone: () => void }) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <Label>المدينة</Label>
-            <Input value={city} onChange={(e) => setCity(e.target.value)} />
           </div>
           <div>
             <Label>العملة</Label>

@@ -46,6 +46,7 @@ import { Route as AuthenticatedDashboardRouteImport } from './routes/_authentica
 import { Route as AuthenticatedDailyLoginRouteImport } from './routes/_authenticated/daily-login'
 import { Route as AuthenticatedChargingPricingRouteImport } from './routes/_authenticated/charging-pricing'
 import { Route as AuthenticatedChargingPearlTransfersRouteImport } from './routes/_authenticated/charging-pearl-transfers'
+import { Route as AuthenticatedChargingLedgerRouteImport } from './routes/_authenticated/charging-ledger'
 import { Route as AuthenticatedChargingCoinTransfersRouteImport } from './routes/_authenticated/charging-coin-transfers'
 import { Route as AuthenticatedChargingAgentsRouteImport } from './routes/_authenticated/charging-agents'
 import { Route as AuthenticatedChargingAgenciesRouteImport } from './routes/_authenticated/charging-agencies'
@@ -279,6 +280,12 @@ const AuthenticatedChargingPearlTransfersRoute =
     path: '/charging-pearl-transfers',
     getParentRoute: () => AuthenticatedRouteRoute,
   } as any)
+const AuthenticatedChargingLedgerRoute =
+  AuthenticatedChargingLedgerRouteImport.update({
+    id: '/charging-ledger',
+    path: '/charging-ledger',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const AuthenticatedChargingCoinTransfersRoute =
   AuthenticatedChargingCoinTransfersRouteImport.update({
     id: '/charging-coin-transfers',
@@ -488,6 +495,7 @@ export interface FileRoutesByFullPath {
   '/charging-agencies': typeof AuthenticatedChargingAgenciesRouteWithChildren
   '/charging-agents': typeof AuthenticatedChargingAgentsRouteWithChildren
   '/charging-coin-transfers': typeof AuthenticatedChargingCoinTransfersRoute
+  '/charging-ledger': typeof AuthenticatedChargingLedgerRoute
   '/charging-pearl-transfers': typeof AuthenticatedChargingPearlTransfersRoute
   '/charging-pricing': typeof AuthenticatedChargingPricingRoute
   '/daily-login': typeof AuthenticatedDailyLoginRoute
@@ -560,6 +568,7 @@ export interface FileRoutesByTo {
   '/charging-agencies': typeof AuthenticatedChargingAgenciesRouteWithChildren
   '/charging-agents': typeof AuthenticatedChargingAgentsRouteWithChildren
   '/charging-coin-transfers': typeof AuthenticatedChargingCoinTransfersRoute
+  '/charging-ledger': typeof AuthenticatedChargingLedgerRoute
   '/charging-pearl-transfers': typeof AuthenticatedChargingPearlTransfersRoute
   '/charging-pricing': typeof AuthenticatedChargingPricingRoute
   '/daily-login': typeof AuthenticatedDailyLoginRoute
@@ -633,6 +642,7 @@ export interface FileRoutesById {
   '/_authenticated/charging-agencies': typeof AuthenticatedChargingAgenciesRouteWithChildren
   '/_authenticated/charging-agents': typeof AuthenticatedChargingAgentsRouteWithChildren
   '/_authenticated/charging-coin-transfers': typeof AuthenticatedChargingCoinTransfersRoute
+  '/_authenticated/charging-ledger': typeof AuthenticatedChargingLedgerRoute
   '/_authenticated/charging-pearl-transfers': typeof AuthenticatedChargingPearlTransfersRoute
   '/_authenticated/charging-pricing': typeof AuthenticatedChargingPricingRoute
   '/_authenticated/daily-login': typeof AuthenticatedDailyLoginRoute
@@ -707,6 +717,7 @@ export interface FileRouteTypes {
     | '/charging-agencies'
     | '/charging-agents'
     | '/charging-coin-transfers'
+    | '/charging-ledger'
     | '/charging-pearl-transfers'
     | '/charging-pricing'
     | '/daily-login'
@@ -779,6 +790,7 @@ export interface FileRouteTypes {
     | '/charging-agencies'
     | '/charging-agents'
     | '/charging-coin-transfers'
+    | '/charging-ledger'
     | '/charging-pearl-transfers'
     | '/charging-pricing'
     | '/daily-login'
@@ -851,6 +863,7 @@ export interface FileRouteTypes {
     | '/_authenticated/charging-agencies'
     | '/_authenticated/charging-agents'
     | '/_authenticated/charging-coin-transfers'
+    | '/_authenticated/charging-ledger'
     | '/_authenticated/charging-pearl-transfers'
     | '/_authenticated/charging-pricing'
     | '/_authenticated/daily-login'
@@ -1175,6 +1188,13 @@ declare module '@tanstack/react-router' {
       path: '/charging-pearl-transfers'
       fullPath: '/charging-pearl-transfers'
       preLoaderRoute: typeof AuthenticatedChargingPearlTransfersRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/charging-ledger': {
+      id: '/_authenticated/charging-ledger'
+      path: '/charging-ledger'
+      fullPath: '/charging-ledger'
+      preLoaderRoute: typeof AuthenticatedChargingLedgerRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/_authenticated/charging-coin-transfers': {
@@ -1586,6 +1606,7 @@ interface AuthenticatedRouteRouteChildren {
   AuthenticatedChargingAgenciesRoute: typeof AuthenticatedChargingAgenciesRouteWithChildren
   AuthenticatedChargingAgentsRoute: typeof AuthenticatedChargingAgentsRouteWithChildren
   AuthenticatedChargingCoinTransfersRoute: typeof AuthenticatedChargingCoinTransfersRoute
+  AuthenticatedChargingLedgerRoute: typeof AuthenticatedChargingLedgerRoute
   AuthenticatedChargingPearlTransfersRoute: typeof AuthenticatedChargingPearlTransfersRoute
   AuthenticatedChargingPricingRoute: typeof AuthenticatedChargingPricingRoute
   AuthenticatedDailyLoginRoute: typeof AuthenticatedDailyLoginRoute
@@ -1638,6 +1659,7 @@ const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
     AuthenticatedChargingAgentsRouteWithChildren,
   AuthenticatedChargingCoinTransfersRoute:
     AuthenticatedChargingCoinTransfersRoute,
+  AuthenticatedChargingLedgerRoute: AuthenticatedChargingLedgerRoute,
   AuthenticatedChargingPearlTransfersRoute:
     AuthenticatedChargingPearlTransfersRoute,
   AuthenticatedChargingPricingRoute: AuthenticatedChargingPricingRoute,
