@@ -1,9 +1,0 @@
-Yamo Admin V214 — Arabic Premium UI, Language Switcher and Message Sections
-
-- Arabic pricing text restored; English digits retained everywhere.
-- Working pencil edit controls for every price.
-- Arabic / English top-bar language selector with saved preference.
-- Sidebar, breadcrumbs and page direction follow selected language.
-- Premium illuminated styles applied to the shared button system.
-- Message section manager: add, enable, hide and delete custom sections.
-- Corrected complete V211/V212 SQL retained and expanded.

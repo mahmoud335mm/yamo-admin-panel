@@ -1,7 +1,0 @@
-تركيب Yamo Admin V217
-
-1. انسخ محتويات هذا المجلد إلى جذر yamo-admin-panel واستبدل الملفات المتطابقة.
-2. شغّل RUN_THIS_SQL_V217_CAMPAIGN_STUDIO.sql كاملًا في Supabase SQL Editor.
-3. اعمل Commit ثم Push من GitHub Desktop.
-4. افتح قسم "البنرات والرسائل الفورية" وستجد المعاينة المباشرة والبنرات القديمة.
-5. استخدم تطبيق Yamo Chat V138.3.8 لعرض النص أسفل صورة البنر.

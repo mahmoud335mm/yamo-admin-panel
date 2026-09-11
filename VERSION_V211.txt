@@ -1,6 +1,0 @@
-Yamo Admin V211
-release=V211-message-archive
-base=Yamo_Admin_V210_USER_LOOKUP_ENGLISH_NUMBERS_ADVANCED_DAYS_PATCH
-date=2026-08-28
-scope=Admin message archive, media preview, soft delete retention, audit logging
-message_pricing=NOT_CHANGED
