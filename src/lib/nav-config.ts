@@ -144,7 +144,7 @@ export const navItems: NavItem[] = [
         icon: Building2,
         permission: "agencies.read",
       },
-      { to: "/hosts", labelAr: "المضيفون", labelEn: "Hosts", icon: Mic, permission: "hosts.read" },
+      { to: "/hosts", labelAr: "المضيفون", labelEn: "Hosts", icon: Mic, permission: "agency.manage" },
     ],
   },
 

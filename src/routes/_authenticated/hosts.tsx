@@ -1,41 +1,31 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { YamoDataModule } from "@/components/yamo-data-module";
-export const Route = createFileRoute("/_authenticated/hosts")({
-  component: () => (
-    <YamoDataModule
-      title="المضيفون"
-      description="مضيفو يامو المرتبطون بالوكالات"
-      source="admin_hosts"
-      columns={[
-        { key: "legacy_id", label: "المستخدم" },
-        { key: "agency_id", label: "الوكالة" },
-        { key: "removed_at", label: "تاريخ الإزالة" },
-        { key: "total_pearls", label: "إجمالي اللؤلؤ" },
-        { key: "joined_at", label: "الانضمام" },
-      ]}
-      actions={[
-        {
-          label: "إعادة للوكالة",
-          rpc: "admin_set_host_removed",
-          buildArgs: (r) => ({
-            p_agency_id: r.agency_id,
-            p_user_id: r.user_id,
-            p_removed: false,
-            p_reason: "إعادة من الإدارة",
-          }),
-        },
-        {
-          label: "إزالة المضيف",
-          rpc: "admin_set_host_removed",
-          tone: "destructive",
-          buildArgs: (r) => ({
-            p_agency_id: r.agency_id,
-            p_user_id: r.user_id,
-            p_removed: true,
-            p_reason: "إزالة من الإدارة",
-          }),
-        },
-      ]}
-    />
-  ),
-});
+import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
+import { PermissionGuard } from "@/components/permission-guard";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card,CardContent,CardHeader,CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Loader2,RefreshCw,Search,Users,WalletCards,Target,UserCheck } from "lucide-react";
+import { toast } from "sonner";
+import { HostCommandCenter } from "./agencies";
+const db=supabase as any;
+export const Route=createFileRoute("/_authenticated/hosts")({component:()=> <PermissionGuard permission="agency.manage"><HostsPage/></PermissionGuard>});
+function HostsPage(){
+ const[input,setInput]=useState(""),[term,setTerm]=useState(""),[includeRemoved,setIncludeRemoved]=useState(true),[lastRefresh,setLastRefresh]=useState<Date|null>(null);
+ useEffect(()=>{const id=setTimeout(()=>setTerm(input.trim()),250);return()=>clearTimeout(id)},[input]);
+ const q=useQuery({queryKey:["agency-hosts-section",term,includeRemoved],queryFn:async()=>{const{data,error}=await db.rpc("admin_list_yamo_agency_hosts",{p_query:term,p_include_removed:includeRemoved});if(error)throw error;return(data??[]) as any[];}});
+ const totals=useMemo(()=>({all:(q.data??[]).length,active:(q.data??[]).filter(x=>!x.removed_at).length,pearls:(q.data??[]).reduce((s,x)=>s+Number(x.total_earned_pearls||0),0),target:(q.data??[]).filter(x=>Number(x.total_earned_pearls||0)>=50000).length}),[q.data]);
+ const refresh=async()=>{const r=await q.refetch();if(r.error)toast.error(r.error.message);else{setLastRefresh(new Date());toast.success("تم تحديث بيانات المضيفين")}};
+ return <div className="space-y-5" dir="rtl"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">مضيفو الوكالات</h1><p className="text-sm text-muted-foreground">الأرباح، التارجت، السحب، العضوية والحسابات المرتبطة من مركز واحد.</p></div><div className="flex items-center gap-2"><Button variant="outline" disabled={q.isFetching} onClick={()=>void refresh()}>{q.isFetching?<Loader2 className="ml-2 h-4 w-4 animate-spin"/>:<RefreshCw className="ml-2 h-4 w-4"/>}تحديث الآن</Button>{lastRefresh&&<span className="text-xs text-muted-foreground" dir="ltr">{lastRefresh.toLocaleTimeString("en-GB")}</span>}</div></div>
+ <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><Stat icon={<Users/>} label="كل المضيفين" value={totals.all}/><Stat icon={<UserCheck/>} label="المضيفون النشطون" value={totals.active}/><Stat icon={<WalletCards/>} label="إجمالي الأرباح" value={totals.pearls}/><Stat icon={<Target/>} label="تجاوزوا 50,000" value={totals.target}/></div>
+ <Card><CardContent className="flex flex-wrap items-center gap-3 p-4"><div className="relative min-w-64 flex-1"><Search className="absolute right-3 top-3 h-4 w-4 text-muted-foreground"/><Input className="pr-9" value={input} onChange={e=>setInput(e.target.value)} placeholder="بحث بالاسم أو ID أو الوكالة أو كود الانضمام"/></div><label className="flex items-center gap-2 text-sm"><Switch checked={includeRemoved} onCheckedChange={setIncludeRemoved}/>عرض العضويات المنتهية</label></CardContent></Card>
+ {q.isLoading?<div className="grid min-h-52 place-items-center"><Loader2 className="h-7 w-7 animate-spin"/></div>:q.error?<div className="rounded-lg border border-destructive/30 p-4 text-destructive">{(q.error as Error).message}</div>:<div className="grid gap-4 xl:grid-cols-2">{(q.data??[]).map(h=><HostCard key={`${h.agency_id}-${h.user_id}`} host={h} refresh={()=>void refresh()}/>) }{!(q.data??[]).length&&<div className="col-span-full rounded-xl border border-dashed p-12 text-center text-muted-foreground">لا يوجد مضيفون مطابقون.</div>}</div>}
+ </div>;
+}
+function Stat({icon,label,value}:{icon:React.ReactNode;label:string;value:number}){return <Card><CardContent className="flex items-center gap-3 p-4"><span className="rounded-lg bg-primary/10 p-2 text-primary">{icon}</span><div><b className="text-xl" dir="ltr">{Number(value||0).toLocaleString("en-US")}</b><div className="text-xs text-muted-foreground">{label}</div></div></CardContent></Card>}
+function HostCard({host:h,refresh}:{host:any;refresh:()=>void}){return <Card className={h.removed_at?"opacity-60":""}><CardHeader className="pb-3"><div className="flex items-center gap-3">{h.avatar_url?<img src={h.avatar_url} alt="" className="h-16 w-16 rounded-full border object-cover"/>:<div className="grid h-16 w-16 place-items-center rounded-full bg-primary/10 text-xl font-bold text-primary">{String(h.name??"؟").slice(0,1)}</div>}<div className="min-w-0 flex-1"><CardTitle className="truncate text-base">{h.name}</CardTitle><div className="text-xs text-muted-foreground" dir="ltr">ID {h.legacy_id}</div><div className="mt-1 flex flex-wrap gap-1"><Badge variant={h.removed_at?"secondary":"default"}>{h.removed_at?"عضوية منتهية":"نشط"}</Badge><Badge variant="outline">{h.agency_name}</Badge></div></div></div></CardHeader><CardContent className="space-y-3"><div className="grid grid-cols-3 gap-2"><Metric label="كوينز" value={h.coins}/><Metric label="لؤلؤ" value={h.pearls}/><Metric label="إجمالي الربح" value={h.total_earned_pearls}/></div><div className="grid grid-cols-2 gap-2">{Object.entries(h.earnings_by_source??{}).slice(0,6).map(([k,v])=><div key={k} className="flex justify-between rounded-md border p-2 text-xs"><span>{labelSource(k)}</span><b dir="ltr">{Number(v||0).toLocaleString("en-US")}</b></div>)}</div><div className="border-t pt-2 text-xs text-muted-foreground"><div>قائد الوكالة: {h.agency_owner_name}</div><div>الانضمام: <span dir="ltr">{new Date(h.joined_at).toLocaleString("en-GB")}</span></div><div>الكود: <b dir="ltr">{h.joined_code??"—"}</b></div></div><HostCommandCenter host={h} onDone={refresh}/></CardContent></Card>}
+function Metric({label,value}:{label:string;value:any}){return <div className="rounded-lg bg-muted p-2 text-center"><b className="block" dir="ltr">{Number(value||0).toLocaleString("en-US")}</b><span className="text-[11px] text-muted-foreground">{label}</span></div>}
+function labelSource(v:string){const x=v.toLowerCase();return x.includes("message")?"الرسائل":x.includes("call")?"المكالمات":x.includes("room")&&x.includes("gift")?"هدايا الغرف":x.includes("gift")?"هدايا 1×1":x.includes("task")?"المهام":v}
