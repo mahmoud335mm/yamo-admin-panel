@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PermissionGuard } from "@/components/permission-guard";
@@ -11,189 +11,61 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Loader2, Plus, Search, Zap } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Banknote, Coins, Loader2, MoreHorizontal, Plus, RefreshCw, Search, Users, Zap } from "lucide-react";
 import { toast } from "sonner";
-import { CHARGING_AGENCY_STATUS, fmtDate } from "@/lib/charging-utils";
+import { CHARGING_AGENCY_STATUS, fmtDate, fmtNum } from "@/lib/charging-utils";
 
-export const Route = createFileRoute("/_authenticated/charging-agencies")({
-  component: () => <PermissionGuard permission="charging_agencies.read"><Page /></PermissionGuard>,
-});
+export const Route = createFileRoute("/_authenticated/charging-agencies")({ component: () => <PermissionGuard permission="charging_agencies.read"><Page /></PermissionGuard> });
+type Owner = { id: string; external_uid: string | null; display_name: string | null; avatar_url: string | null };
+type Wallet = { user_id: string; coins: number | null; pearls: number | null };
+type Stat = { agency_id: string; day: string; coins_sent: number | null; transfer_count: number | null };
 
 function Page() {
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState("all");
-  const [page, setPage] = useState(0);
-  const size = 25;
-  const { has } = usePermissions();
-
+  const [q, setQ] = useState(""); const [status, setStatus] = useState("all"); const [country, setCountry] = useState("all"); const [page, setPage] = useState(0);
+  const size = 25; const { has } = usePermissions(); const qc = useQueryClient();
   const list = useQuery({
-    queryKey: ["charging_agencies", q, status, page],
+    queryKey: ["charging_agencies_command_center", q, status, country, page],
     queryFn: async () => {
-      let query = supabase.from("charging_agencies")
-        .select("id, display_id, name, country, status, default_currency, created_at, owner_user_id", { count: "exact" })
-        .order("created_at", { ascending: false })
-        .range(page * size, page * size + size - 1);
-      if (q.trim()) query = query.or(`name.ilike.%${q}%,display_id.ilike.%${q}%,country.ilike.%${q}%`);
-      if (status !== "all") query = query.eq("status", status as never);
-      const { data, count, error } = await query;
-      if (error) throw error;
-      return { rows: data ?? [], total: count ?? 0 };
+      let query = supabase.from("charging_agencies").select("id,display_id,name,country,city,status,default_currency,created_at,updated_at,owner_user_id,logo_url,commission_rate,daily_coin_transfer_limit", { count: "exact" }).is("deleted_at", null).order("updated_at", { ascending: false }).range(page * size, page * size + size - 1);
+      if (q.trim()) query = query.or(`name.ilike.%${q.trim()}%,display_id.ilike.%${q.trim()}%,country.ilike.%${q.trim()}%`);
+      if (status !== "all") query = query.eq("status", status as never); if (country !== "all") query = query.eq("country", country);
+      const { data, count, error } = await query; if (error) throw error; const rows = data ?? [];
+      const ownersIds = [...new Set(rows.map((r) => r.owner_user_id).filter(Boolean))] as string[]; const agenciesIds = rows.map((r) => r.id);
+      const today = new Date().toISOString().slice(0, 10); const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      const [op, wa, st, me] = await Promise.all([
+        ownersIds.length ? supabase.from("profiles").select("id,external_uid,display_name,avatar_url").in("id", ownersIds) : Promise.resolve({ data: [], error: null }),
+        ownersIds.length ? supabase.from("wallets").select("user_id,coins,pearls").in("user_id", ownersIds) : Promise.resolve({ data: [], error: null }),
+        agenciesIds.length ? supabase.from("charging_agency_daily_stats").select("agency_id,day,coins_sent,transfer_count").in("agency_id", agenciesIds).gte("day", yesterday) : Promise.resolve({ data: [], error: null }),
+        agenciesIds.length ? supabase.from("charging_agency_members").select("agency_id").in("agency_id", agenciesIds).eq("status", "active") : Promise.resolve({ data: [], error: null }),
+      ]); if (op.error) throw op.error; if (wa.error) throw wa.error; if (st.error) throw st.error; if (me.error) throw me.error;
+      const owners = new Map((op.data as Owner[]).map((x) => [x.id, x])); const wallets = new Map((wa.data as Wallet[]).map((x) => [x.user_id, x])); const stats = st.data as Stat[]; const memberCounts = new Map<string, number>();
+      for (const m of me.data ?? []) memberCounts.set(m.agency_id, (memberCounts.get(m.agency_id) ?? 0) + 1);
+      return { total: count ?? 0, rows: rows.map((r) => { const current = stats.find((s) => s.agency_id === r.id && s.day === today); const previous = stats.find((s) => s.agency_id === r.id && s.day === yesterday); const now = Number(current?.coins_sent ?? 0), before = Number(previous?.coins_sent ?? 0); return { ...r, owner: r.owner_user_id ? owners.get(r.owner_user_id) : undefined, wallet: r.owner_user_id ? wallets.get(r.owner_user_id) : undefined, today: current, members: memberCounts.get(r.id) ?? 0, trend: before ? ((now - before) / before) * 100 : now ? 100 : 0 }; }) };
     },
   });
-
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">وكالات الشحن</h1>
-          <p className="text-sm text-muted-foreground">إدارة كيانات وكالات الشحن، حالتها، ومالكيها.</p>
-        </div>
-        {has("charging_agencies.create") && <CreateDialog onDone={() => list.refetch()} />}
-      </div>
-
-      <Card>
-        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="بحث بالاسم أو الكود أو الدولة…" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} className="pr-9" />
-          </div>
-          <Select value={status} onValueChange={(v) => { setStatus(v); setPage(0); }}>
-            <SelectTrigger className="w-40"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">كل الحالات</SelectItem>
-              {Object.entries(CHARGING_AGENCY_STATUS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </CardHeader>
-        <CardContent>
-          {list.isLoading ? (
-            <div className="py-16 text-center"><Loader2 className="mx-auto h-6 w-6 animate-spin" /></div>
-          ) : list.isError ? (
-            <div className="py-16 text-center text-sm text-destructive">فشل التحميل: {(list.error as Error).message}</div>
-          ) : list.data!.rows.length === 0 ? (
-            <div className="flex flex-col items-center gap-2 py-16 text-center">
-              <Zap className="h-10 w-10 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">لا توجد وكالات شحن حتى الآن.</p>
-            </div>
-          ) : (
-            <>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>الكود</TableHead>
-                    <TableHead>الاسم</TableHead>
-                    <TableHead>الدولة</TableHead>
-                    <TableHead>العملة</TableHead>
-                    <TableHead>الحالة</TableHead>
-                    <TableHead>تاريخ الإنشاء</TableHead>
-                    <TableHead></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {list.data!.rows.map((r) => (
-                    <TableRow key={r.id}>
-                      <TableCell className="font-mono text-xs">{r.display_id}</TableCell>
-                      <TableCell className="font-medium">{r.name}</TableCell>
-                      <TableCell>{r.country ?? "-"}</TableCell>
-                      <TableCell>{r.default_currency ?? "-"}</TableCell>
-                      <TableCell><Badge variant={r.status === "active" ? "default" : "secondary"}>{CHARGING_AGENCY_STATUS[r.status] ?? r.status}</Badge></TableCell>
-                      <TableCell className="text-xs text-muted-foreground">{fmtDate(r.created_at)}</TableCell>
-                      <TableCell>
-                        <Link to="/charging-agencies/$id" params={{ id: r.id }}>
-                          <Button size="sm" variant="ghost">عرض</Button>
-                        </Link>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-              <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
-                <span>الإجمالي: {list.data!.total}</span>
-                <div className="flex items-center gap-2">
-                  <Button size="sm" variant="outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>السابق</Button>
-                  <span>صفحة {page + 1}</span>
-                  <Button size="sm" variant="outline" disabled={(page + 1) * size >= list.data!.total} onClick={() => setPage((p) => p + 1)}>التالي</Button>
-                </div>
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-    </div>
-  );
+  const countries = useQuery({ queryKey: ["charging_agency_countries"], queryFn: async () => { const { data, error } = await supabase.from("charging_agencies").select("country").is("deleted_at", null); if (error) throw error; return [...new Set((data ?? []).map((x) => x.country).filter(Boolean))] as string[]; } });
+  const totals = useMemo(() => { const rows = list.data?.rows ?? []; return { active: rows.filter((r) => r.status === "active").length, coins: rows.reduce((s, r) => s + Number(r.wallet?.coins ?? 0), 0), transfers: rows.reduce((s, r) => s + Number(r.today?.transfer_count ?? 0), 0), volume: rows.reduce((s, r) => s + Number(r.today?.coins_sent ?? 0), 0) }; }, [list.data]);
+  const refresh = async () => { await qc.invalidateQueries({ queryKey: ["charging_agencies_command_center"] }); await qc.invalidateQueries({ queryKey: ["charging_agency_countries"] }); toast.success("تم تحديث بيانات وكالات الشحن"); };
+  return <div className="space-y-6" dir="rtl">
+    <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between"><div><h1 className="text-3xl font-black">وكالات الشحن</h1><p className="mt-1 text-sm text-muted-foreground">إدارة الأرصدة والوكلاء والتحويلات ومتابعة الأداء في الوقت الفعلي.</p></div><div className="flex gap-2"><Button variant="outline" onClick={refresh} disabled={list.isFetching}><RefreshCw className={`ml-2 h-4 w-4 ${list.isFetching ? "animate-spin" : ""}`} />تحديث</Button>{has("charging_agencies.create") && <CreateDialog onDone={() => list.refetch()} />}</div></div>
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Metric title="إجمالي الوكالات" value={list.data?.total ?? 0} sub={`${fmtNum(totals.active)} وكالة نشطة`} icon={<Users />} /><Metric title="الرصيد المتاح" value={totals.coins} sub="كوينز لدى ملاك الوكالات" icon={<Coins />} orange /><Metric title="تحويلات اليوم" value={totals.transfers} sub={`${fmtNum(totals.volume)} كوينز`} icon={<RefreshCw />} /><Metric title="حجم حركة اليوم" value={totals.volume} sub="إجمالي الكوينز المحولة" icon={<Banknote />} orange /></div>
+    <div className="flex flex-wrap gap-2"><Nav to="/charging-agencies" label="الوكالات" active /><Nav to="/charging-agents" label="الوكلاء" /><Nav to="/charging-coin-transfers" label="تحويل الكوينز" /><Nav to="/charging-pearl-transfers" label="تحويل اللؤلؤ" /><Nav to="/charging-pricing" label="التسعير" /></div>
+    <Card className="overflow-hidden"><CardHeader className="border-b bg-muted/20"><div className="flex flex-col gap-3 xl:flex-row"><div className="relative flex-1"><Search className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input placeholder="ابحث باسم الوكالة أو الكود أو الدولة…" value={q} onChange={(e) => { setQ(e.target.value); setPage(0); }} className="pr-9" /></div><Select value={status} onValueChange={(v) => { setStatus(v); setPage(0); }}><SelectTrigger className="xl:w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل الحالات</SelectItem>{Object.entries(CHARGING_AGENCY_STATUS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent></Select><Select value={country} onValueChange={(v) => { setCountry(v); setPage(0); }}><SelectTrigger className="xl:w-44"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">كل الدول</SelectItem>{(countries.data ?? []).map((x) => <SelectItem key={x} value={x}>{x}</SelectItem>)}</SelectContent></Select></div></CardHeader>
+      <CardContent className="p-0">{list.isLoading ? <div className="py-20"><Loader2 className="mx-auto h-7 w-7 animate-spin" /></div> : list.isError ? <div className="py-20 text-center text-destructive">فشل التحميل: {(list.error as Error).message}</div> : !list.data!.rows.length ? <div className="flex flex-col items-center gap-3 py-20"><Zap className="h-12 w-12 text-muted-foreground" /><span>لا توجد وكالات مطابقة</span></div> : <><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-muted/30"><TableHead>#</TableHead><TableHead>الوكالة</TableHead><TableHead>المالك / ID</TableHead><TableHead>الكوينز</TableHead><TableHead>اللؤلؤ</TableHead><TableHead>حد اليوم</TableHead><TableHead>الوكلاء</TableHead><TableHead>الأداء</TableHead><TableHead>الحالة</TableHead><TableHead>آخر تحديث</TableHead><TableHead /></TableRow></TableHeader><TableBody>{list.data!.rows.map((r, i) => <TableRow key={r.id}><TableCell className="font-mono" dir="ltr">{page * size + i + 1}</TableCell><TableCell><div className="flex items-center gap-3"><Avatar className="h-11 w-11 border-2 border-primary/20"><AvatarImage src={r.logo_url ?? undefined} /><AvatarFallback>{r.name.slice(0, 2)}</AvatarFallback></Avatar><div><Link to="/charging-agencies/$id" params={{ id: r.id }} className="font-bold hover:text-primary">{r.name}</Link><div className="font-mono text-[11px] text-muted-foreground" dir="ltr">{r.display_id} · {r.country ?? "-"}</div></div></div></TableCell><TableCell><div className="flex items-center gap-2"><Avatar className="h-8 w-8"><AvatarImage src={r.owner?.avatar_url ?? undefined} /><AvatarFallback>{r.owner?.display_name?.slice(0, 1) ?? "?"}</AvatarFallback></Avatar><div><div className="text-sm">{r.owner?.display_name ?? "غير محدد"}</div><div className="font-mono text-[11px] text-muted-foreground" dir="ltr">{r.owner?.external_uid ?? "-"}</div></div></div></TableCell><TableCell className="font-mono" dir="ltr">{fmtNum(r.wallet?.coins ?? 0)}</TableCell><TableCell className="font-mono" dir="ltr">{fmtNum(r.wallet?.pearls ?? 0)}</TableCell><TableCell className="font-mono text-xs" dir="ltr">{fmtNum(r.daily_coin_transfer_limit ?? 0)}</TableCell><TableCell className="font-mono" dir="ltr">{r.members}</TableCell><TableCell><Trend value={r.trend} /></TableCell><TableCell><Status status={r.status} /></TableCell><TableCell className="text-xs text-muted-foreground">{fmtDate(r.updated_at)}</TableCell><TableCell><Link to="/charging-agencies/$id" params={{ id: r.id }}><Button size="icon" variant="ghost"><MoreHorizontal className="h-4 w-4" /></Button></Link></TableCell></TableRow>)}</TableBody></Table></div><div className="flex justify-between border-t p-4 text-sm"><span>الإجمالي: <b className="font-mono" dir="ltr">{fmtNum(list.data!.total)}</b></span><div className="flex gap-2"><Button size="sm" variant="outline" disabled={!page} onClick={() => setPage((x) => x - 1)}>السابق</Button><span className="p-2 font-mono" dir="ltr">{page + 1}</span><Button size="sm" variant="outline" disabled={(page + 1) * size >= list.data!.total} onClick={() => setPage((x) => x + 1)}>التالي</Button></div></div></>}</CardContent></Card>
+  </div>;
 }
 
+function Metric({ title, value, sub, icon, orange }: { title: string; value: number; sub: string; icon: React.ReactNode; orange?: boolean }) { return <Card><CardContent className="flex items-center justify-between p-5"><div><p className="text-sm text-muted-foreground">{title}</p><p className="mt-2 font-mono text-2xl font-black" dir="ltr">{fmtNum(value)}</p><p className="mt-1 text-xs text-muted-foreground">{sub}</p></div><div className={`grid h-12 w-12 place-items-center rounded-2xl ${orange ? "bg-orange-500/15 text-orange-500" : "bg-primary/15 text-primary"}`}>{icon}</div></CardContent></Card>; }
+function Nav({ to, label, active }: { to: "/charging-agencies" | "/charging-agents" | "/charging-coin-transfers" | "/charging-pearl-transfers" | "/charging-pricing"; label: string; active?: boolean }) { return <Link to={to}><Button size="sm" variant={active ? "default" : "outline"}>{label}</Button></Link>; }
+function Trend({ value }: { value: number }) { const up = value >= 0; return <span className={`flex items-center gap-1 font-mono text-xs font-bold ${up ? "text-emerald-500" : "text-red-500"}`} dir="ltr">{up ? <ArrowUpRight className="h-4 w-4" /> : <ArrowDownRight className="h-4 w-4" />}{up ? "+" : ""}{value.toFixed(1)}%</span>; }
+function Status({ status }: { status: string }) { return <Badge className={status === "active" ? "bg-emerald-500/15 text-emerald-500" : status === "suspended" || status === "closed" ? "bg-red-500/15 text-red-500" : "bg-amber-500/15 text-amber-500"}>{CHARGING_AGENCY_STATUS[status] ?? status}</Badge>; }
+
 function CreateDialog({ onDone }: { onDone: () => void }) {
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [country, setCountry] = useState("");
-  const [city, setCity] = useState("");
-  const [currency, setCurrency] = useState("USD");
-  const [ownerUid, setOwnerUid] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const navigate = useNavigate();
-  const qc = useQueryClient();
-
-  const create = useMutation({
-    mutationFn: async () => {
-      let ownerId: string | null = null;
-      if (ownerUid.trim()) {
-        const { data: p, error } = await supabase.from("profiles").select("id").eq("external_uid", ownerUid.trim()).maybeSingle();
-        if (error) throw error;
-        if (!p) throw new Error("لم يتم العثور على المستخدم المالك بهذا UID");
-        ownerId = p.id;
-      }
-      const args: Record<string, unknown> = {
-        _name: name,
-        _country: country || null,
-        _city: city || null,
-        _default_currency: currency || "USD",
-        _owner_user_id: ownerId,
-        _deputy_user_id: null,
-        _phone: phone || null,
-        _email: email || null,
-      };
-      const { data, error } = await supabase.rpc("create_charging_agency", args as never);
-      if (error) throw error;
-      return data as string;
-    },
-    onSuccess: (id) => {
-      toast.success("تم إنشاء الوكالة");
-      qc.invalidateQueries({ queryKey: ["charging_agencies"] });
-      setOpen(false);
-      onDone();
-      if (id) navigate({ to: "/charging-agencies/$id", params: { id } });
-    },
-    onError: (e: Error) => toast.error(e.message),
-  });
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild><Button><Plus className="ml-1 h-4 w-4" /> وكالة جديدة</Button></DialogTrigger>
-      <DialogContent dir="rtl">
-        <DialogHeader><DialogTitle>إنشاء وكالة شحن</DialogTitle></DialogHeader>
-        <div className="space-y-3">
-          <div><Label>الاسم *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>الدولة</Label><Input value={country} onChange={(e) => setCountry(e.target.value)} /></div>
-            <div><Label>المدينة</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>العملة</Label><Input value={currency} onChange={(e) => setCurrency(e.target.value)} /></div>
-            <div><Label>UID المالك (اختياري)</Label><Input value={ownerUid} onChange={(e) => setOwnerUid(e.target.value)} placeholder="مثال: YMU-000123" /></div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div><Label>الهاتف</Label><Input value={phone} onChange={(e) => setPhone(e.target.value)} /></div>
-            <div><Label>البريد</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} /></div>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button>
-          <Button onClick={() => create.mutate()} disabled={!name || create.isPending}>{create.isPending && <Loader2 className="ml-1 h-4 w-4 animate-spin" />}إنشاء</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+  const [open, setOpen] = useState(false), [name, setName] = useState(""), [country, setCountry] = useState(""), [city, setCity] = useState(""), [currency, setCurrency] = useState("USD"), [ownerQuery, setOwnerQuery] = useState(""), [owner, setOwner] = useState<Owner | null>(null), [phone, setPhone] = useState(""), [email, setEmail] = useState("");
+  const navigate = useNavigate(); const qc = useQueryClient();
+  const suggestions = useQuery({ queryKey: ["charging_owner_suggestions", ownerQuery], enabled: open && ownerQuery.trim().length > 0, queryFn: async () => { const term = ownerQuery.trim(); const { data, error } = await supabase.from("profiles").select("id,external_uid,display_name,avatar_url").or(`external_uid.ilike.%${term}%,display_name.ilike.%${term}%`).limit(8); if (error) throw error; return data as Owner[]; } });
+  const create = useMutation({ mutationFn: async () => { const { data, error } = await supabase.rpc("create_charging_agency", { _name: name.trim(), _country: country || null, _city: city || null, _default_currency: currency, _owner_user_id: owner?.id ?? null, _deputy_user_id: null, _phone: phone || null, _email: email || null } as never); if (error) throw error; return data as string; }, onSuccess: (id) => { toast.success("تم إنشاء وكالة الشحن"); qc.invalidateQueries({ queryKey: ["charging_agencies_command_center"] }); setOpen(false); onDone(); if (id) navigate({ to: "/charging-agencies/$id", params: { id } }); }, onError: (e: Error) => toast.error(e.message) });
+  return <Dialog open={open} onOpenChange={setOpen}><DialogTrigger asChild><Button className="bg-orange-500 text-white hover:bg-orange-600"><Plus className="ml-2 h-4 w-4" />إضافة وكالة شحن</Button></DialogTrigger><DialogContent dir="rtl" className="max-w-2xl"><DialogHeader><DialogTitle>إنشاء وكالة شحن</DialogTitle></DialogHeader><div className="grid gap-4 py-2 sm:grid-cols-2"><div className="sm:col-span-2"><Label>اسم الوكالة *</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div><div className="relative sm:col-span-2"><Label>المالك — ابحث بالاسم أو ID *</Label><Input value={ownerQuery} onChange={(e) => { setOwnerQuery(e.target.value); setOwner(null); }} />{!owner && suggestions.data?.length ? <div className="absolute z-50 mt-1 w-full rounded-lg border bg-popover p-1 shadow-xl">{suggestions.data.map((x) => <button key={x.id} type="button" className="flex w-full items-center gap-3 rounded-md p-2 text-right hover:bg-muted" onClick={() => { setOwner(x); setOwnerQuery(`${x.display_name} · ${x.external_uid}`); }}><Avatar className="h-9 w-9"><AvatarImage src={x.avatar_url ?? undefined} /><AvatarFallback>{x.display_name?.slice(0, 1)}</AvatarFallback></Avatar><span><b className="block">{x.display_name}</b><small className="font-mono" dir="ltr">{x.external_uid}</small></span></button>)}</div> : null}</div><div><Label>واتساب *</Label><Input dir="ltr" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+20…" /></div><div><Label>البريد</Label><Input dir="ltr" value={email} onChange={(e) => setEmail(e.target.value)} /></div><div><Label>الدولة</Label><Input value={country} onChange={(e) => setCountry(e.target.value)} /></div><div><Label>المدينة</Label><Input value={city} onChange={(e) => setCity(e.target.value)} /></div><div><Label>العملة</Label><Input dir="ltr" value={currency} onChange={(e) => setCurrency(e.target.value.toUpperCase())} /></div></div><DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>إلغاء</Button><Button disabled={!name.trim() || !owner || !phone.trim() || create.isPending} onClick={() => create.mutate()}>{create.isPending && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}إنشاء</Button></DialogFooter></DialogContent></Dialog>;
 }
