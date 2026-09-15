@@ -249,11 +249,11 @@ function Page() {
           <div className="flex items-center gap-3">
             <h1 className="text-3xl font-black">مركز وكالة الشحن</h1>
             <Badge className="bg-gradient-to-l from-violet-600 to-orange-500 text-white" dir="ltr">
-              V237
+              V238
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            إدارة الأرصدة والوكلاء والتحويلات ومتابعة الأداء في الوقت الفعلي.
+            منظومة جديدة موحّدة لإدارة الوكالات والوكلاء والأسعار والتحويلات والسجل في الوقت الفعلي.
           </p>
         </div>
         <div className="flex gap-2">
