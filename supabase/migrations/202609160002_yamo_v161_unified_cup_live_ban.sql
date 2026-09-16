@@ -3,7 +3,13 @@ begin;
 -- ==========================================================================
 -- V161 — one cup ledger/window for the global cup and the in-room cup.
 -- DAILY is the configurable operational shift from yamo_room_cup_config_v160.
+--
+-- PostgreSQL cannot change OUT/table return columns with CREATE OR REPLACE.
+-- Older Yamo installs may already have this exact input signature with a
+-- different row type, so drop that signature first and recreate it cleanly.
 -- ==========================================================================
+drop function if exists public.get_yamo_general_cup(text,text,integer);
+
 create or replace function public.get_yamo_general_cup(
   p_board text,
   p_period text,
@@ -77,11 +83,34 @@ revoke all on function public.get_yamo_general_cup(text,text,integer) from publi
 grant execute on function public.get_yamo_general_cup(text,text,integer) to authenticated;
 
 -- ==========================================================================
+-- Ban-number compatibility for databases that have the moderation table from
+-- older Yamo releases but have not yet applied the V160 ban-number migration.
+-- Keep this migration self-contained so the live-ban guard compiles safely.
+-- ==========================================================================
+create sequence if not exists public.yamo_ban_number_seq start with 100001;
+alter table public.yamo_moderation_actions
+  add column if not exists ban_number bigint;
+alter table public.yamo_moderation_actions
+  alter column ban_number set default nextval('public.yamo_ban_number_seq');
+select setval(
+  'public.yamo_ban_number_seq',
+  greatest(100000,coalesce((select max(ban_number) from public.yamo_moderation_actions),100000)),
+  true
+);
+update public.yamo_moderation_actions
+set ban_number=nextval('public.yamo_ban_number_seq')
+where ban_number is null;
+create unique index if not exists yamo_moderation_actions_ban_number_uidx
+  on public.yamo_moderation_actions(ban_number);
+
+-- ==========================================================================
 -- Very small account guard used while the app is open. The Android app polls
 -- this lightweight function so an admin ban takes effect without waiting for
 -- app restart or another feature refresh.
 -- ==========================================================================
-create or replace function public.get_yamo_session_guard_v161()
+drop function if exists public.get_yamo_session_guard_v161();
+
+create function public.get_yamo_session_guard_v161()
 returns table(
   allowed boolean,
   account_status text,
