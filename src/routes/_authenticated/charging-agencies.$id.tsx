@@ -41,6 +41,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ChargingFinancialControl } from "@/components/charging-financial-control";
 import {
   CHARGING_AGENCY_STATUS,
   CHARGING_TXN_STATUS,
@@ -292,6 +293,7 @@ function Page() {
         />
       </div>
 
+      <ChargingFinancialControl agency={a} />
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
