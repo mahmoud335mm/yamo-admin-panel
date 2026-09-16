@@ -16,10 +16,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { usePermissions } from "@/hooks/use-permissions";
+import { UserAccountCenter } from "@/components/user-account-center";
+import { UserAccountOperations } from "@/components/user-account-operations";
 
 export const Route = createFileRoute("/_authenticated/users/$id")({
-  component: () => <PermissionGuard permission="users.read"><UserDetail /></PermissionGuard>,
+  component: () => <PermissionGuard permission="users.read"><AccountPage /></PermissionGuard>,
 });
+function AccountPage() { const { id } = Route.useParams(); return <div className="space-y-6"><UserAccountOperations key={id} id={id} /><UserAccountCenter key={`profile-${id}`} id={id} /></div>; }
 
 type Action =
   | { kind: "ban_perm" } | { kind: "ban_temp" } | { kind: "unban" }
