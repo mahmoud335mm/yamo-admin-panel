@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 
-export const Route = createFileRoute("/api/account-network" as never)({
+export const Route = createFileRoute("/api/account-network")({
   server: { handlers: { POST: async ({ request }) => {
     const response = (status: number) => new Response(null, { status, headers: { "Cache-Control": "no-store" } });
     // Never trust location fields or an IP supplied in the request body.
