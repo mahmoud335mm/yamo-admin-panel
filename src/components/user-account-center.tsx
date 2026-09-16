@@ -34,6 +34,15 @@ export function UserAccountCenter({ id }: { id: string }) {
   };
   const source = sources[tab];
   const records = useQuery({ queryKey: ["user-records", id, tab, page], enabled: Boolean(source) && user.isSuccess && Boolean(user.data), queryFn: async () => {
+    if (tab === "devices") {
+      const { data, error } = await supabase.rpc("admin_get_yamo_user_account_context" as never, { p_user_id: id } as never);
+      if (error) throw error;
+      const context = data as unknown as { bindings?: Record<string, unknown>[] };
+      return (context.bindings ?? [])
+        .map((binding) => Object.fromEntries(["id", "platform", "bound_at", "last_seen_at", "released_at", "release_reason"].map((key) => [key, binding[key]])))
+        .sort((a, b) => String(b.bound_at ?? "").localeCompare(String(a.bound_at ?? "")))
+        .slice(page * 25, page * 25 + 25);
+    }
     const { data, error } = await (supabase as any).from(source.table).select(source.select ?? "*", { count: "exact" }).eq(source.field, id).order(source.order, { ascending: false }).range(page * 25, page * 25 + 24);
     if (error) throw error; return (data ?? []) as Record<string, unknown>[];
   }});
