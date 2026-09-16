@@ -18,6 +18,22 @@ export const Route = createFileRoute("/_authenticated/settings")({
         })}
       />
       <YamoCommandCard
+        title="توقيت الكأس الموحد"
+        description="يتحكم في بداية ومدة شيفت الكأس العام وكأس داخل الروم معًا — نفس الترتيب ونفس وقت إعادة الضبط"
+        rpc="admin_set_yamo_room_cup_config_v160"
+        refreshSource="app_config"
+        fields={[
+          { key: "timezone", label: "المنطقة الزمنية", initial: "Africa/Cairo", required: true },
+          { key: "start", label: "بداية الشيفت HH:MM", initial: "00:00", required: true },
+          { key: "hours", label: "مدة الشيفت بالساعات", type: "number", initial: "24", required: true },
+        ]}
+        buildArgs={(v) => ({
+          p_timezone: String(v.timezone),
+          p_shift_start: String(v.start),
+          p_shift_hours: Number(v.hours),
+        })}
+      />
+      <YamoCommandCard
         title="تعديل إعداد مباشر"
         description="القيمة بصيغة JSON وتصل للتطبيق بدون إصدار APK جديد"
         rpc="admin_set_yamo_app_config"
