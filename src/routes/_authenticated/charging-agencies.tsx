@@ -55,6 +55,7 @@ import { ChargingPricingPanel } from "./charging-pricing";
 import { ChargingCoinTransfersPanel } from "./charging-coin-transfers";
 import { ChargingPearlTransfersPanel } from "./charging-pearl-transfers";
 import { ChargingLedgerPanel } from "./charging-ledger";
+import { ChargingFinancialControl } from "@/components/charging-financial-control";
 
 const COUNTRY_OPTIONS = worldCountries
   .filter((country) => country.status === "officially-assigned")
@@ -90,6 +91,28 @@ type Stat = {
 
 function Page() {
   const [section, setSection] = useState("agencies");
+  const [selectedAgencyId, setSelectedAgencyId] = useState("");
+  const [agencyTerm, setAgencyTerm] = useState("");
+  const agencyChoices = useQuery({
+    queryKey: ["charging_agency_selector", agencyTerm],
+    queryFn: async () => {
+      let query = supabase.from("charging_agencies").select("*").is("deleted_at", null).order("name").limit(50);
+      const term = agencyTerm.trim().replace(/[(),%]/g, "");
+      if (term) query = query.or(`name.ilike.%${term}%,display_id.ilike.%${term}%`);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+  const selectedAgency = useQuery({
+    queryKey: ["charging_agency", selectedAgencyId],
+    enabled: Boolean(selectedAgencyId),
+    queryFn: async () => {
+      const { data, error } = await supabase.from("charging_agencies").select("*").eq("id", selectedAgencyId).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
   const [country, setCountry] = useState("all");
@@ -247,9 +270,9 @@ function Page() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-black">مركز وكالة الشحن</h1>
+            <h1 className="text-3xl font-black">إدارة وكالات الشحن</h1>
             <Badge className="bg-gradient-to-l from-violet-600 to-orange-500 text-white" dir="ltr">
-              V238
+              V241
             </Badge>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -264,7 +287,7 @@ function Page() {
           {has("charging_agencies.create") && <CreateDialog onDone={() => list.refetch()} />}
         </div>
       </div>
-      <Card
+      {section === "settings" && <><Card
         className={
           system.data?.system_enabled === false ? "border-red-500/40" : "border-emerald-500/30"
         }
@@ -321,6 +344,7 @@ function Page() {
           ))}
         </CardContent>
       </Card>
+      </>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Metric
           title="إجمالي الوكالات"
@@ -349,14 +373,14 @@ function Page() {
           orange
         />
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2 rounded-2xl border bg-card p-3">
         {[
-          ["agencies", "الوكالات"],
+          ["agencies", "نظرة عامة"],
+          ["finance", "التحكم المالي"],
+          ["ledger", "السجلات"],
           ["agents", "الوكلاء"],
           ["pricing", "الأسعار والباقات"],
-          ["coins", "شحن الكوينز"],
-          ["pearls", "اللؤلؤ والتبديل"],
-          ["ledger", "السجل المالي الشامل"],
+          ["settings", "الإعدادات"],
         ].map(([key, label]) => (
           <Button
             key={key}
@@ -368,6 +392,7 @@ function Page() {
           </Button>
         ))}
       </div>
+      {(section === "finance" || section === "settings") && <Card className="rounded-2xl shadow-none"><CardHeader><b>اختيار وكالة الشحن</b><p className="text-sm text-muted-foreground">ابحث باسم الوكالة أو معرفها ثم اخترها لعرض أرصدتها والتحكم فيها.</p></CardHeader><CardContent className="space-y-4"><Input placeholder="اسم الوكالة أو CHG-ID…" value={agencyTerm} onChange={(e) => setAgencyTerm(e.target.value)} /><select className="w-full rounded-xl border bg-background p-3" value={selectedAgencyId} onChange={(e) => setSelectedAgencyId(e.target.value)}><option value="">اختر الوكالة</option>{selectedAgency.data && !agencyChoices.data?.some((a) => a.id === selectedAgencyId) && <option value={selectedAgencyId}>{selectedAgency.data.name} — {selectedAgency.data.display_id}</option>}{agencyChoices.data?.map((a) => <option key={a.id} value={a.id}>{a.name} — {a.display_id}</option>)}</select>{agencyChoices.error && <p role="alert" className="text-destructive">تعذر تحميل الاقتراحات: {agencyChoices.error.message}</p>}{selectedAgency.isFetching && <Loader2 className="h-5 w-5 animate-spin" />}{selectedAgency.error && <p role="alert" className="text-destructive">تعذر تحميل الوكالة: {selectedAgency.error.message}</p>}{selectedAgency.data && <ChargingFinancialControl key={`${selectedAgencyId}-${section}`} agency={selectedAgency.data} view={section === "finance" ? "finance" : "settings"} />}</CardContent></Card>}
       {section === "agencies" && (
         <Card className="overflow-hidden">
           <CardHeader className="border-b bg-muted/20">
@@ -576,7 +601,9 @@ function Page() {
       {section === "pricing" && <ChargingPricingPanel />}
       {section === "coins" && <ChargingCoinTransfersPanel />}
       {section === "pearls" && <ChargingPearlTransfersPanel />}
-      {section === "ledger" && <ChargingLedgerPanel />}
+      {section === "ledger" && <><div className="flex gap-2"><Button variant="outline" onClick={() => setSection("coins")}>تحويلات الكوينز</Button><Button variant="outline" onClick={() => setSection("pearls")}>تحويلات اللؤلؤ</Button></div><ChargingLedgerPanel /></>}
+      {(section === "coins" || section === "pearls") && <Button variant="outline" onClick={() => setSection("ledger")}>الرجوع إلى السجلات</Button>}
+      {section === "ledger" && <Card className="rounded-2xl shadow-none"><CardHeader><b>سجل تعديلات الإدارة لوكالة محددة</b></CardHeader><CardContent><select className="mb-4 w-full rounded-xl border bg-background p-3" value={selectedAgencyId} onChange={(e) => setSelectedAgencyId(e.target.value)}><option value="">اختر الوكالة لعرض تعديلات الإدارة والعكس</option>{agencyChoices.data?.map((a) => <option key={a.id} value={a.id}>{a.name} — {a.display_id}</option>)}</select>{selectedAgency.data && <ChargingFinancialControl key={selectedAgencyId} agency={selectedAgency.data} view="logs" />}</CardContent></Card>}
     </div>
   );
 }
