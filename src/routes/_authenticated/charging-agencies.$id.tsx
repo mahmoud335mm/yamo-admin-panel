@@ -42,6 +42,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ChargingFinancialControl } from "@/components/charging-financial-control";
+import { ChargingPricingPanel } from "./charging-pricing";
+import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from "recharts";
 import {
   CHARGING_AGENCY_STATUS,
   CHARGING_TXN_STATUS,
@@ -62,6 +64,17 @@ function Page() {
   const { id } = Route.useParams();
   const qc = useQueryClient();
   const { has } = usePermissions();
+  const [tab, setTab] = useState("overview");
+  const [memberSearch, setMemberSearch] = useState("");
+  const refresh = () => Promise.all([
+    qc.invalidateQueries({ queryKey: ["charging_agency", id] }),
+    qc.invalidateQueries({ queryKey: ["charging_agency_owner"] }),
+    qc.invalidateQueries({ queryKey: ["charging_agency_stats", id] }),
+    qc.invalidateQueries({ queryKey: ["charging_agency_members", id] }),
+    qc.invalidateQueries({ queryKey: ["charging_agency_coin_txns", id] }),
+    qc.invalidateQueries({ queryKey: ["charging_agency_pearl_txns", id] }),
+    qc.invalidateQueries({ queryKey: ["charging_financial_control", id] }),
+  ]);
 
   const agency = useQuery({
     queryKey: ["charging_agency", id],
@@ -117,7 +130,7 @@ function Page() {
       const { data, error } = await supabase
         .from("charging_agency_members")
         .select(
-          "id, member_role, status, assigned_at, user_id, profiles:user_id(legacy_id, display_name)",
+          "id, member_role, status, assigned_at, user_id, profiles:user_id(legacy_id, display_name, avatar_url)",
         )
         .eq("agency_id", id)
         .order("assigned_at", { ascending: false });
@@ -209,6 +222,7 @@ function Page() {
         <Loader2 className="mx-auto h-6 w-6 animate-spin" />
       </div>
     );
+  if (agency.error) return <div role="alert" className="rounded-xl border p-6 text-destructive">تعذر تحميل الوكالة: {agency.error.message}<Button className="mr-3" variant="outline" onClick={() => agency.refetch()}>إعادة المحاولة</Button></div>;
   if (!agency.data)
     return <div className="py-16 text-center text-muted-foreground">الوكالة غير موجودة</div>;
   const a = agency.data;
@@ -221,8 +235,9 @@ function Page() {
   const monthTransfers = monthStats.reduce((sum, row) => sum + Number(row.transfer_count ?? 0), 0);
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-start justify-between">
+    <div className="space-y-6" dir="rtl">
+      <div className="flex items-center justify-between"><div><h1 className="text-2xl font-bold">إدارة وكالة الشحن</h1><p className="mt-1 text-sm text-muted-foreground">الأرصدة والعمليات والوكلاء وإعدادات الوكالة</p></div><Button variant="outline" onClick={refresh} disabled={agency.isFetching}><RefreshCw className={`ml-2 h-4 w-4 ${agency.isFetching ? "animate-spin" : ""}`} />تحديث</Button></div>
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border bg-card p-5">
         <div>
           <div className="flex items-center gap-3">
             <Link to="/charging-agencies">
@@ -231,15 +246,16 @@ function Page() {
               </Button>
             </Link>
             <Avatar className="h-12 w-12 border-2 border-primary/20">
-              <AvatarImage src={a.logo_url ?? undefined} />
+              <AvatarImage src={owner.data?.profile?.avatar_url ?? a.logo_url ?? undefined} />
               <AvatarFallback>{a.name.slice(0, 2)}</AvatarFallback>
             </Avatar>
             <h1 className="text-2xl font-bold">{a.name}</h1>
             <Badge>{CHARGING_AGENCY_STATUS[a.status] ?? a.status}</Badge>
           </div>
-          <p className="mt-1 font-mono text-xs text-muted-foreground">{a.display_id}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{owner.data?.profile?.display_name ?? "—"} · <span dir="ltr">{owner.data?.profile?.legacy_id ?? "—"}</span> · <span dir="ltr">{a.display_id}</span></p>
         </div>
         <div className="flex gap-2">
+          {has("charging_finance.manage") && <Button variant="outline" onClick={() => setTab("settings")}>تعديل البيانات</Button>}
           {a.status === "active" && has("charging_agencies.suspend") && (
             <ReasonAction
               label="تعليق"
@@ -267,13 +283,13 @@ function Page() {
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Summary
           label="رصيد الكوينز"
-          value={fmtNum(owner.data?.wallet?.coins ?? 0)}
+          value={owner.isSuccess ? fmtNum(owner.data?.wallet?.coins ?? 0) : "—"}
           hint="رصيد مالك الوكالة"
           icon={<Coins />}
         />
         <Summary
           label="رصيد اللؤلؤ"
-          value={fmtNum(owner.data?.wallet?.pearls ?? 0)}
+          value={owner.isSuccess ? fmtNum(owner.data?.wallet?.pearls ?? 0) : "—"}
           hint="الرصيد الحالي"
           icon={<Gem />}
           orange
@@ -293,16 +309,21 @@ function Page() {
         />
       </div>
 
-      <ChargingFinancialControl agency={a} />
-      <Tabs defaultValue="overview">
-        <TabsList>
+      <Tabs value={tab} onValueChange={setTab}>
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-xl border bg-muted/30 p-2">
           <TabsTrigger value="overview">نظرة عامة</TabsTrigger>
+          <TabsTrigger value="finance">التحكم المالي</TabsTrigger>
+          <TabsTrigger value="logs">السجلات</TabsTrigger>
           <TabsTrigger value="agents">الوكلاء</TabsTrigger>
-          <TabsTrigger value="transfers">تحويلات الكوينز</TabsTrigger>
-          <TabsTrigger value="pearls">تحويلات اللؤلؤ</TabsTrigger>
-          <TabsTrigger value="permissions">الحدود والصلاحيات</TabsTrigger>
+          <TabsTrigger value="pricing">الباقات والأسعار</TabsTrigger>
+          <TabsTrigger value="settings">الإعدادات</TabsTrigger>
         </TabsList>
+        <TabsContent value="finance"><ChargingFinancialControl agency={a} view="finance" /></TabsContent>
+        <TabsContent value="logs"><ChargingFinancialControl agency={a} view="logs" /><div className="mt-4 flex gap-3"><Button variant="outline" onClick={() => setTab("transfers")}>تحويلات الكوينز</Button><Button variant="outline" onClick={() => setTab("pearls")}>تحويلات اللؤلؤ</Button></div></TabsContent>
+        <TabsContent value="pricing"><p className="mb-4 rounded-xl border bg-muted/20 p-4 text-sm">هذه أسعار المنصة العامة وتُطبّق على وكالات الشحن، وليست أسعارًا خاصة بهذه الوكالة.</p><PermissionGuard permission="charging_pricing.read"><ChargingPricingPanel /></PermissionGuard></TabsContent>
+        {(tab === "transfers" || tab === "pearls") && <Button variant="outline" onClick={() => setTab("logs")}>الرجوع إلى السجلات</Button>}
         <TabsContent value="overview" className="space-y-4">
+          <Card className="rounded-2xl shadow-none"><CardHeader className="flex flex-row items-center justify-between"><CardTitle className="text-base">حركة الكوينز خلال آخر 30 يومًا</CardTitle><Button variant="outline" onClick={() => setTab("finance")}>تعديل الرصيد</Button></CardHeader><CardContent>{stats.error ? <p role="alert" className="text-destructive">تعذر تحميل المؤشرات: {stats.error.message}</p> : stats.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : monthStats.length === 0 ? <p className="py-10 text-center text-muted-foreground">لا توجد حركة مسجلة لهذه الفترة.</p> : <div className="h-64" dir="ltr"><ResponsiveContainer width="100%" height="100%"><AreaChart data={[...monthStats].reverse()}><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="day" tickFormatter={(v: string) => v.slice(5)} /><YAxis tickFormatter={(v: number) => new Intl.NumberFormat("en-US", { notation: "compact" }).format(v)} /><Tooltip formatter={(v) => [fmtNum(Number(v)), "كوينز مرسلة"]} /><Area type="monotone" dataKey="coins_sent" stroke="var(--primary)" fill="var(--primary)" fillOpacity={0.12} /></AreaChart></ResponsiveContainer></div>}</CardContent></Card>
           <Card>
             <CardHeader>
               <CardTitle className="text-sm">بيانات الوكالة والمالك</CardTitle>
@@ -322,9 +343,9 @@ function Page() {
                   </div>
                 </div>
               </div>
-              <KV k="الدولة" v={a.country ?? "-"} /> <KV k="المدينة" v={a.city ?? "-"} />{" "}
+              <KV k="الدولة" v={a.country ?? "-"} />{" "}
               <KV k="العملة" v={a.default_currency ?? "-"} />
-              <KV k="الهاتف" v={a.phone ?? "-"} /> <KV k="البريد" v={a.email ?? "-"} />{" "}
+              <KV k="الهاتف" v={a.phone ?? "-"} />{" "}
               <KV k="المستوى" v={String(a.level_id ?? "-")} />
               <KV k="الحد اليومي كوينز" v={fmtNum(a.daily_coin_transfer_limit)} />
               <KV k="الحد الشهري كوينز" v={fmtNum(a.monthly_coin_transfer_limit)} />
@@ -336,10 +357,12 @@ function Page() {
         </TabsContent>
         <TabsContent value="agents">
           <Card>
+            <CardHeader><div className="flex flex-wrap items-center justify-between gap-3"><CardTitle>وكلاء هذه الوكالة</CardTitle><Link to="/charging-agents"><Button variant="outline">إدارة وإضافة الوكلاء</Button></Link></div><Input placeholder="بحث باسم الوكيل أو ID…" value={memberSearch} onChange={(e) => setMemberSearch(e.target.value)} /></CardHeader>
             <CardContent className="pt-4">
+              {members.error && <p role="alert" className="text-destructive">تعذر تحميل الوكلاء: {members.error.message}</p>}
               {members.isLoading ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-              ) : members.data!.length === 0 ? (
+              ) : !members.data?.length ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">لا يوجد وكلاء</div>
               ) : (
                 <Table>
@@ -352,11 +375,12 @@ function Page() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {members.data!.map((m) => {
-                      const p = m.profiles as { legacy_id?: string; display_name?: string } | null;
+                    {members.data.filter((m) => { const p = m.profiles as { legacy_id?: string; display_name?: string } | null; return `${p?.display_name ?? ""} ${p?.legacy_id ?? ""}`.toLowerCase().includes(memberSearch.trim().toLowerCase()); }).map((m) => {
+                      const p = m.profiles as { legacy_id?: string; display_name?: string; avatar_url?: string } | null;
                       return (
                         <TableRow key={m.id}>
                           <TableCell>
+                            <Avatar className="mb-2 h-10 w-10"><AvatarImage src={p?.avatar_url ?? undefined} /><AvatarFallback>{p?.display_name?.slice(0, 1) ?? "؟"}</AvatarFallback></Avatar>
                             <Link
                               to="/charging-agents/$id"
                               params={{ id: m.user_id }}
@@ -385,9 +409,10 @@ function Page() {
         <TabsContent value="transfers">
           <Card>
             <CardContent className="pt-4">
+              {coinTxns.error && <p role="alert" className="text-destructive">تعذر تحميل التحويلات: {coinTxns.error.message}</p>}
               {coinTxns.isLoading ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
-              ) : coinTxns.data!.length === 0 ? (
+              ) : !coinTxns.data?.length ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   لا توجد تحويلات
                 </div>
@@ -402,7 +427,7 @@ function Page() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {coinTxns.data!.map((t) => (
+                    {coinTxns.data?.map((t) => (
                       <TableRow key={t.id}>
                         <TableCell className="font-mono text-xs">{t.reference}</TableCell>
                         <TableCell>{fmtNum(t.amount)}</TableCell>
@@ -423,6 +448,7 @@ function Page() {
         <TabsContent value="pearls">
           <Card>
             <CardContent className="pt-4">
+              {pearlTxns.error && <p role="alert" className="text-destructive">تعذر تحميل تحويلات اللؤلؤ: {pearlTxns.error.message}</p>}
               {pearlTxns.isLoading ? (
                 <Loader2 className="mx-auto h-5 w-5 animate-spin" />
               ) : !pearlTxns.data?.length ? (
@@ -470,7 +496,8 @@ function Page() {
             </CardContent>
           </Card>
         </TabsContent>
-        <TabsContent value="permissions">
+        <TabsContent value="settings" className="space-y-4">
+          <ChargingFinancialControl agency={a} view="settings" />
           <div className="grid gap-4 md:grid-cols-2">
             <Card>
               <CardHeader>
@@ -524,7 +551,7 @@ function Summary({
   orange?: boolean;
 }) {
   return (
-    <Card>
+    <Card className="rounded-2xl shadow-none">
       <CardContent className="flex items-center justify-between p-5">
         <div>
           <div className="text-xs text-muted-foreground">{label}</div>
